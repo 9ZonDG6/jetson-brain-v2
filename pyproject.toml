@@ -1,0 +1,15 @@
+[project]
+name = "jetson-brain-v2"
+version = "0.0.1"
+description = "Jetson Nano control and vision pilot for Bloodrunner v2"
+readme = "README.md"
+requires-python = ">=3.14,<3.15"
+dependencies = ["aiohttp>=3.12", "nats-py>=2.0"]
+
+[project.scripts]
+jetson-brain-v2 = "jetson_brain_v2.app:main"
+jetson-ai-pilot = "jetson_brain_v2.ai_pilot:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"

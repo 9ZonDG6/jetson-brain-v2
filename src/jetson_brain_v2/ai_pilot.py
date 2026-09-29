@@ -15,8 +15,8 @@ import uuid
 from dataclasses import fields
 from pathlib import Path
 
-from ai_drive import AiConfig, AiDrive
-from ai_source import NatsAiSource
+from .ai_drive import AiConfig, AiDrive, apply_rc_nudge
+from .ai_source import NatsAiSource
 
 log = logging.getLogger("ai_pilot")
 
@@ -102,8 +102,18 @@ def main():
             if not source.connected or received_at is None or reason == "AI command timeout":
                 log.error("AI source lost or timed out; stopping and disarming")
                 break
+            status = request_json(args.control_url, "/api/status?client_id=" + client_id)
+            if status["mode"] != "WEB_ARMED" or not status["web_owner"]:
+                log.info("AI control lease ended or was taken over")
+                break
             if not valid:
                 output = (1500, 1500)
+            elif config.rc_nudge_mode != "off":
+                try:
+                    output = apply_rc_nudge(config, output, status)
+                except ValueError as exc:
+                    log.error("RC steering unavailable: %s; stopping AI", exc)
+                    break
             reply = request_json(args.control_url, "/api/web-control", {
                 "client_id": client_id,
                 "ch1_us": output[0],

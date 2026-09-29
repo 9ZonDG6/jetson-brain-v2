@@ -8,5 +8,10 @@
   "full_steering_angle_deg": 30.0,
   "min_inliers": 20,
   "timeout_s": 0.5,
-  "max_source_age_s": 0.5
+  "max_source_age_s": 0.5,
+  "rc_nudge_mode": "off",
+  "rc_steering_channel": 1,
+  "rc_steering_sign": 1,
+  "rc_nudge_limit_us": 75,
+  "rc_nudge_deadband_us": 40
 }

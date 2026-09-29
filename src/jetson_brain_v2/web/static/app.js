@@ -160,6 +160,52 @@ for (const k of ["swap", "inv1", "inv2"]) {
   });
 }
 
+$("ai-nats-url").value = localStorage.getItem("ai-nats-url") || "";
+$("ai-nats-url").addEventListener("change", () =>
+  localStorage.setItem("ai-nats-url", $("ai-nats-url").value.trim()));
+
+$("btn-ai-save").onclick = async () => {
+  const data = {
+    swap: mix.swap, inv1: mix.inv1, inv2: mix.inv2,
+    drive_delta_us: Number($("ai-drive").value),
+    turn_delta_us: Number($("ai-turn").value),
+    rc_nudge_mode: $("ai-rc-mode").value,
+    rc_steering_channel: Number($("ai-rc-channel").value),
+    rc_steering_sign: Number($("ai-rc-sign").value),
+  };
+  const result = await post("/api/ai/config", data);
+  if (result.ok) toast("Проводка и параметры ИИ сохранены на Jetson");
+};
+
+$("btn-ai-arm").onclick = async () => {
+  const natsUrl = $("ai-nats-url").value.trim();
+  localStorage.setItem("ai-nats-url", natsUrl);
+  const result = await post("/api/ai/start", { nats_url: natsUrl });
+  if (result.ok) toast("ИИ запускается; движение начнётся только при свежей локализации");
+};
+
+$("btn-ai-stop").onclick = async () => {
+  const result = await post("/api/ai/stop");
+  if (result.ok) toast("ИИ остановлен");
+};
+
+let cameraShown = false;
+$("btn-camera-view").onclick = () => {
+  cameraShown = !cameraShown;
+  const preview = $("camera-preview");
+  preview.classList.toggle("hidden", !cameraShown);
+  preview.src = cameraShown ? `/api/camera/stream.mjpg?t=${Date.now()}` : "";
+  $("btn-camera-view").textContent = cameraShown ? "Скрыть поток" : "Показать поток";
+};
+$("btn-camera-record").onclick = async () => {
+  const result = await post("/api/camera/record/start");
+  if (result.ok) toast(`Запись началась: ${result.file}`);
+};
+$("btn-camera-stop").onclick = async () => {
+  const result = await post("/api/camera/record/stop");
+  if (result.ok) toast(result.file ? `Запись сохранена: ${result.file}` : "Запись не шла");
+};
+
 document.addEventListener("keydown", (e) => {
   if (e.code === "Space") {
     e.preventDefault();
@@ -233,9 +279,10 @@ function render(s) {
   setChip("c-pwm", s.pwm_status, s.pwm_status === "READY" ? "ok" : s.pwm_status === "DRY-RUN" ? "warn" : "bad");
   setChip("c-rc", s.rc_status, s.rc_status === "CONNECTED" ? "ok" : "bad");
 
+  const aiActive = !!(s.ai && s.ai.running);
   const [label, cls, text] = MODE[s.mode];
   $("banner").className = "banner " + cls;
-  $("mode").textContent = label;
+  $("mode").textContent = aiActive && s.mode === "WEB_ARMED" ? "AI" : label;
   let detail = s.mode === "FAULT" && s.fault ? "Причина: " + s.fault + ". " + text : text;
   if (s.pwm_error) detail += " PWM: " + s.pwm_error;
   if (s.rc_error) detail += " RC input: " + s.rc_error;
@@ -263,12 +310,29 @@ function render(s) {
     out.querySelector(".sub").textContent = "реально " + s[`out${n}_actual_us`] + " us";
     setMeter(out.querySelector(".meter"), s[`out${n}_us`], s.mode === "RC_ARMED" || s.mode === "WEB_ARMED" ? "" : "idle");
   }
-  $("source").textContent = SOURCE[s.mode];
+  $("source").textContent = aiActive && s.mode === "WEB_ARMED" ? "ИИ" : SOURCE[s.mode];
+
+  $("ai-state").textContent = !s.ai || !s.ai.configured ? "ИИ: сначала сохраните проводку из WASD"
+    : aiActive && s.mode === "WEB_ARMED" ? "ИИ управляет приводом; STOP и ARM RC доступны"
+    : aiActive ? "ИИ ждёт свежую локализацию"
+    : s.ai.exit_code == null ? "ИИ готов к запуску" : `ИИ остановлен (код ${s.ai.exit_code})`;
+  $("btn-ai-arm").classList.toggle("active", aiActive && s.mode === "WEB_ARMED");
+  $("btn-ai-arm").disabled = aiActive || !s.ai || !s.ai.configured;
+  $("btn-ai-save").disabled = aiActive;
+
+  const camera = s.camera || {};
+  $("camera-state").textContent = !camera.configured ? "Камера не настроена: создайте config/camera.json"
+    : camera.online ? (camera.recording ? "Камера онлайн · запись идёт" : "Камера онлайн")
+    : `Нет кадров с камеры${camera.error ? ": " + camera.error : ""}`;
+  $("camera-file").textContent = camera.file || "";
+  $("btn-camera-view").disabled = !camera.configured;
+  $("btn-camera-record").disabled = !camera.online || camera.recording;
+  $("btn-camera-stop").disabled = !camera.recording;
 
   if (armedLocal && !(s.mode === "WEB_ARMED" && s.web_owner)) disarmLocal();
 
   $("btn-arm-rc").classList.toggle("active", s.mode === "RC_ARMED");
-  $("btn-arm-web").classList.toggle("active", s.mode === "WEB_ARMED");
+  $("btn-arm-web").classList.toggle("active", s.mode === "WEB_ARMED" && !aiActive);
 
   $("web").classList.toggle("locked", !armedLocal);
   const wst = $("web-state");
@@ -276,7 +340,7 @@ function render(s) {
     wst.textContent = "ARMED — управляет выходом";
     wst.className = "web-state ok";
   } else if (s.mode === "WEB_ARMED") {
-    wst.textContent = "управляет другой браузер";
+    wst.textContent = aiActive ? "управляет ИИ" : "управляет другой браузер";
     wst.className = "web-state warn";
   } else {
     wst.textContent = "не активно — ползунки не влияют на выход";

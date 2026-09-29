@@ -1,4 +1,4 @@
-# robot-control
+# Управление v2
 
 Локальное веб-приложение для Jetson Nano: мониторинг штатного RC-пульта HotRC F-06A и
 безопасное управление 4WD motor controller через два hardware PWM выхода.
@@ -25,7 +25,7 @@ Pinmux для 32/33 приложение выставляет само при с
 С рабочей машины (из этого каталога):
 
 ```bash
-./deploy.sh        # rsync в jetson:/home/jetson/robot-control + uv venv (Python 3.14) + aiohttp
+./scripts/deploy.sh  # rsync в jetson:/home/jetson/jetson-brain-v2 + uv sync
 ```
 
 ## Запуск
@@ -34,16 +34,16 @@ Pinmux для 32/33 приложение выставляет само при с
 поэтому запускать надо python из venv:
 
 ```bash
-cd ~/robot-control
-sudo .venv/bin/python app.py              # hardware mode
-sudo .venv/bin/python app.py --dry-run    # PWM не трогается, в консоль: WOULD SET PWM: 1500 1500
+cd ~/jetson-brain-v2
+sudo .venv/bin/python -m jetson_brain_v2.app              # hardware mode
+sudo .venv/bin/python -m jetson_brain_v2.app --dry-run    # PWM не трогается
 ```
 
 В фоне (переживёт отключение ssh), pid в `/run/robot-control.pid`, лог `/tmp/robot-control.log`:
 
 ```bash
-sudo ~/robot-control/run.sh            # доп. аргументы передаются в app.py, напр. --dry-run
-sudo ~/robot-control/stop.sh
+sudo ~/jetson-brain-v2/scripts/run.sh   # доп. аргументы передаются в app.py, напр. --dry-run
+sudo ~/jetson-brain-v2/scripts/stop.sh
 tail -f /tmp/robot-control.log
 ```
 
@@ -51,7 +51,7 @@ tail -f /tmp/robot-control.log
 
 ## Остановка
 
-- Ctrl+C в консоли, либо `sudo ~/robot-control/stop.sh` (SIGTERM, через 5 с — SIGKILL).
+- Ctrl+C в консоли, либо `sudo ~/jetson-brain-v2/scripts/stop.sh` (SIGTERM, через 5 с — SIGKILL).
   Не используйте `pkill -f "...app.py"` из ssh-однострочника: он убивает и собственную shell-команду.
 - При остановке: сразу DISARMED и 1500/1500, все браузеры отключаются, выход < 2 с.
 - SIGINT / SIGTERM / SIGHUP → выходы 1500/1500, PWM остаётся включённым на нейтрали.
@@ -119,32 +119,45 @@ Kernel GPIO line events (`GPIO_GET_LINEEVENT_IOCTL`, uAPI v1, без libgpiod), 
 | POST | `/api/web-control` | `{"ch1_us":1520,"ch2_us":1480}`, только от владельца WEB ARM |
 | POST | `/api/heartbeat` | |
 | GET | `/ws?client_id=...` | статус 20 Hz; клиент шлёт `{"type":"hb"}` и `{"type":"control",...}` |
+| POST | `/api/ai/config` | сохранить соответствие сторон из текущего WASD и настройки RC |
+| POST | `/api/ai/start`, `/api/ai/stop` | запустить/остановить ИИ-пилот |
+| GET | `/api/camera/stream.mjpg` | прямой MJPEG-поток |
+| POST | `/api/camera/record/start`, `/api/camera/record/stop` | запись камеры в `recordings/*.avi` |
 
 ## ИИ-заезд без лидара и парктроников
 
-`ai_pilot.py` получает команды `robot-vision` из NATS subject
+ИИ-пилот получает команды `robot-vision` из NATS subject
 `robot.vision.localization` и использует существующий режим `WEB_ARMED`.
 Дополнительных датчиков расстояния этот путь не читает. Без них обнаружения
 препятствий нет: полигон должен быть свободным, а оператор — иметь доступ к
 физическому отключению питания приводов.
 
-Перед запуском скопировать `ai-config.example.json` в `ai-config.json` и явно
-задать четыре поля с `null`: какой выход ведёт левую/правую сторону 4WD и
-какой знак PWM вращает каждую сторону вперёд. Пока эти поля не заданы,
-`ai_pilot.py` не запустится. Начальные `drive_delta_us=50` и
-`turn_delta_us=50` — лишь осторожные стартовые значения для проверки
-на вывешенных колёсах; их надо откалибровать на машине. Для левого поворота
+В админке нужно сначала проверить, что WASD едет в верных направлениях, и
+нажать «Сохранить проводку из текущего WASD». Админка возьмёт сохранённые
+в браузере галочки swap/инверсии и запишет `config/ai.json` на Jetson.
+Это избавляет от угадывания, какая сторона подключена к OUT1. Можно также
+вручную скопировать `config/ai.example.json` в `config/ai.json` и явно задать
+четыре поля с `null`. Начальные `drive_delta_us=50` и `turn_delta_us=50` —
+значения для проверки на вывешенных колёсах; их надо откалибровать на машине.
+Для левого поворота
 левая сторона замедляется, правая ускоряется; правый поворот зеркален.
 Команды заднего хода пока дают нейтраль, поскольку прежняя логика разворота
 `robot-vision` рассчитана на другую кинематику.
 
+В админке есть `ARM ИИ` и «Остановить ИИ». Подруливание с пульта можно
+включить при сохранении конфигурации: режим «разница двух каналов» подходит
+для танкового пульта, «отдельный канал» — для стика руля. ИИ оставляет газ за
+собой, а пульт добавляет ограниченный поворот. При потере сигнала RC в этом
+режиме ИИ снимает управление. Выбор канала и знака следует проверить при
+вывешенных колёсах.
+
 ```bash
-cp ai-config.example.json ai-config.json
-# отредактировать ai-config.json после проверки OUT1/OUT2
-sudo ./run.sh
-.venv/bin/python ai_pilot.py --config ai-config.json --nats-url nats://<nats-host>:4222
+cp config/ai.example.json config/ai.json
+# отредактировать config/ai.json после проверки OUT1/OUT2
+sudo ./scripts/run.sh
+.venv/bin/jetson-ai-pilot --config config/ai.json --nats-url nats://<nats-host>:4222
 # Эта команда только проверяет получение свежей локализации и показывает PWM.
-.venv/bin/python ai_pilot.py --config ai-config.json --nats-url nats://<nats-host>:4222 --arm
+.venv/bin/jetson-ai-pilot --config config/ai.json --nats-url nats://<nats-host>:4222 --arm
 ```
 
 Для сквозной проверки без движения запустить `robot-control` с `--dry-run`,
@@ -163,7 +176,23 @@ sudo ./run.sh
 Ограничения: алгоритм машинного зрения и его карты остаются в отдельном
 `robot-vision`; этот репозиторий содержит только приём его команд и выдачу
 управления. Часы `robot-vision` и Jetson должны быть синхронизированы для
-проверки `ts`. Веб-кнопки `ARM AI` пока нет: запуск через CLI.
+проверки `ts`.
+
+## Камера: поток и запись
+
+Для USB-камеры скопировать `config/camera.example.json` в `config/camera.json`,
+указать реальное `/dev/videoN`, формат, разрешение и FPS; затем перезапустить
+приложение. На Jetson нужен `ffmpeg`. RTSP-камера поддерживается через
+`{"kind":"rtsp","url":"rtsp://..."}` с шириной, высотой и FPS. Для CSI
+или другого источника предусмотрен `kind: "command"` и массив `command`:
+команда должна писать последовательные JPEG-кадры в stdout. Конкретный
+GStreamer-конвейер зависит от модели камеры и пока не проверен на Jetson.
+
+Админка показывает прямой MJPEG-поток и кнопки начала/остановки записи.
+Поток и запись используют один захват камеры. Файлы сохраняются локально в
+`recordings/camera-YYYYMMDD-HHMMSS.avi` с MJPEG-видео, пригодным для
+последующей обработки; при деплое файлы и конфигурация камеры сохраняются.
+Сначала проверьте свободное место на диске для длительной записи.
 
 ## Ручные проверки
 

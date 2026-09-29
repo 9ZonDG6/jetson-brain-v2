@@ -1,7 +1,7 @@
 import json
 import unittest
 
-from ai_drive import AiConfig, AiDrive
+from jetson_brain_v2.ai_drive import AiConfig, AiDrive, apply_rc_nudge
 
 
 class AiDriveTests(unittest.TestCase):
@@ -44,6 +44,22 @@ class AiDriveTests(unittest.TestCase):
         self.assertEqual(output, (1500, 1500))
         self.assertEqual(reason, "AI command timeout")
         self.assertFalse(valid)
+
+    def test_tank_rc_steering_changes_turn_without_adding_throttle(self):
+        config = AiConfig(
+            left_output=2, right_output=1, left_sign=1, right_sign=1,
+            drive_delta_us=50, turn_delta_us=50, rc_nudge_mode="tank",
+        )
+        status = {"rc_valid": True, "ch1_us": 1450, "ch2_us": 1550}
+        self.assertEqual(apply_rc_nudge(config, (1550, 1550), status), (1500, 1600))
+
+    def test_lost_rc_signal_blocks_nudge(self):
+        config = AiConfig(
+            left_output=1, right_output=2, left_sign=1, right_sign=1,
+            drive_delta_us=50, turn_delta_us=50, rc_nudge_mode="tank",
+        )
+        with self.assertRaisesRegex(ValueError, "RC signal lost"):
+            apply_rc_nudge(config, (1550, 1550), {"rc_valid": False})
 
 
 if __name__ == "__main__":

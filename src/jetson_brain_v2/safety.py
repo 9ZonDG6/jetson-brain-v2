@@ -9,7 +9,7 @@ import logging
 import threading
 import time
 
-from motor_io import NEUTRAL_US, clamp_us
+from .motor_io import NEUTRAL_US, clamp_us
 
 log = logging.getLogger("safety")
 

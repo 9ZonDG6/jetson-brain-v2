@@ -169,4 +169,18 @@ kbd {
 .mix label { display: inline-flex; align-items: center; gap: 6px; color: var(--fg); cursor: pointer; }
 .mix input { accent-color: var(--ok); width: 16px; height: 16px; }
 
+/* ---------- AI and camera panels ---------- */
+.panel-note { margin: 8px 0 14px; color: var(--muted); font-size: 13px; }
+.settings-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 12px; }
+.settings-grid label { display: grid; gap: 5px; color: var(--muted); font-size: 13px; }
+.settings-grid input, .settings-grid select {
+  width: 100%; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px;
+  background: var(--bg); color: var(--fg); font: inherit;
+}
+.panel-actions { display: flex; flex-wrap: wrap; align-items: stretch; gap: 10px; margin-top: 14px; }
+.panel-actions button.small { margin-left: 0; }
+.panel-actions button.seg { flex: 0 1 150px; border: 1px solid var(--line); border-radius: 8px; }
+button:disabled { opacity: .45; cursor: not-allowed; }
+.camera-preview { display: block; max-width: 100%; width: 800px; margin-top: 14px; border-radius: 8px; background: #000; }
+
 footer { margin-top: 14px; color: var(--muted); font-size: 12px; text-align: center; }

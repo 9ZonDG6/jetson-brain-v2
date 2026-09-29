@@ -3,12 +3,12 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Robot Control</title>
+  <title>Jetson Brain v2</title>
   <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
   <header class="top">
-    <h1>Robot Control</h1>
+    <h1>Jetson Brain v2</h1>
     <div class="chips">
       <span class="chip" id="c-jetson"><i></i>Jetson <b>…</b></span>
       <span class="chip" id="c-pwm"><i></i>PWM out <b>…</b></span>
@@ -107,6 +107,47 @@
           <label><input type="checkbox" id="mix-inv2"> инвертировать OUT2</label>
         </div>
       </div>
+    </section>
+
+    <section class="card wide">
+      <h2>ИИ-пилот <span>robot-vision → NATS → 4WD</span></h2>
+      <p class="panel-note" id="ai-state">ИИ выключен</p>
+      <div class="settings-grid">
+        <label>NATS URL <input id="ai-nats-url" type="text" placeholder="nats://адрес:4222" autocomplete="off"></label>
+        <label>Ход, μs <input id="ai-drive" type="number" min="1" max="500" value="80"></label>
+        <label>Поворот, μs <input id="ai-turn" type="number" min="1" max="500" value="80"></label>
+        <label>Подруливание RC
+          <select id="ai-rc-mode">
+            <option value="off">выключено</option>
+            <option value="tank">разница двух каналов</option>
+            <option value="channel">отдельный канал</option>
+          </select>
+        </label>
+        <label>Канал поворота RC
+          <select id="ai-rc-channel"><option value="1">CH1</option><option value="2">CH2</option></select>
+        </label>
+        <label>Знак канала RC
+          <select id="ai-rc-sign"><option value="1">обычный</option><option value="-1">обратный</option></select>
+        </label>
+      </div>
+      <div class="panel-actions">
+        <button id="btn-ai-save" class="small">Сохранить проводку из текущего WASD</button>
+        <button id="btn-ai-arm" class="seg"><small>ARM</small>ИИ</button>
+        <button id="btn-ai-stop" class="small">Остановить ИИ</button>
+      </div>
+      <p class="panel-note">WASD должен ехать правильно до сохранения проводки. При потере команд ИИ выходы переходят в нейтраль.</p>
+    </section>
+
+    <section class="card wide">
+      <h2>Камера <span>прямой поток и запись на Jetson</span></h2>
+      <p class="panel-note" id="camera-state">Камера не настроена</p>
+      <div class="panel-actions">
+        <button id="btn-camera-view" class="small">Показать поток</button>
+        <button id="btn-camera-record" class="small">Начать запись</button>
+        <button id="btn-camera-stop" class="small">Остановить запись</button>
+      </div>
+      <img id="camera-preview" class="camera-preview hidden" alt="Прямой поток с камеры">
+      <p class="panel-note" id="camera-file"></p>
     </section>
   </main>
 

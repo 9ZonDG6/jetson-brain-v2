@@ -1,7 +1,7 @@
 """Robot control web app: RC monitor + safe RC/WEB control of two hardware PWM outputs.
 
-    sudo .venv/bin/python app.py            # real hardware PWM
-    sudo .venv/bin/python app.py --dry-run  # PWM untouched, prints WOULD SET PWM
+    sudo .venv/bin/jetson-brain-v2            # real hardware PWM
+    sudo .venv/bin/jetson-brain-v2 --dry-run  # PWM untouched, prints WOULD SET PWM
 """
 
 import argparse
@@ -17,10 +17,12 @@ from pathlib import Path
 
 from aiohttp import WSMsgType, web
 
-from cpu_tuning import CpuTuning
-from motor_io import MotorIO
-from rc_input import RCInput
-from safety import ArmError, SafetyController
+from .ai_admin import AiAdmin
+from .camera import CameraConfig, CameraManager
+from .cpu_tuning import CpuTuning
+from .motor_io import MotorIO
+from .rc_input import RCInput
+from .safety import ArmError, SafetyController
 
 BASE = Path(__file__).resolve().parent
 STATUS_PUSH_S = 0.05
@@ -29,6 +31,9 @@ PIDFILE = "/run/robot-control.pid"
 log = logging.getLogger("app")
 CTRL = web.AppKey("ctrl", SafetyController)
 SOCKETS = web.AppKey("sockets", weakref.WeakSet)
+AI_ADMIN = web.AppKey("ai_admin", AiAdmin)
+CONTROL_URL = web.AppKey("control_url", str)
+CAMERA = web.AppKey("camera", CameraManager)
 
 
 async def _body(request):
@@ -45,11 +50,14 @@ def _client_id(request, body=None):
 
 
 async def index(request):
-    return web.FileResponse(BASE / "templates" / "index.html", headers={"Cache-Control": "no-store"})
+    return web.FileResponse(BASE / "web" / "templates" / "index.html", headers={"Cache-Control": "no-store"})
 
 
 async def api_status(request):
-    return web.json_response(request.app[CTRL].status(_client_id(request)))
+    result = request.app[CTRL].status(_client_id(request))
+    result["ai"] = request.app[AI_ADMIN].status()
+    result["camera"] = request.app[CAMERA].status()
+    return web.json_response(result)
 
 
 async def api_arm_rc(request):
@@ -74,7 +82,73 @@ async def api_arm_web(request):
 async def api_stop(request):
     ctrl = request.app[CTRL]
     ctrl.stop("STOP" if request.query.get("reason") != "pagehide" else "STOP (page closed)")
+    await asyncio.to_thread(request.app[AI_ADMIN].stop)
     return web.json_response({"ok": True, "mode": ctrl.mode})
+
+
+async def api_ai_config(request):
+    try:
+        config = request.app[AI_ADMIN].save_wasd_config(await _body(request))
+    except (TypeError, ValueError) as exc:
+        return web.json_response({"ok": False, "error": str(exc)}, status=400)
+    from dataclasses import asdict
+    return web.json_response({"ok": True, "config": asdict(config)})
+
+
+async def api_ai_start(request):
+    if request.app[CTRL].mode != "DISARMED":
+        return web.json_response({"ok": False, "error": "STOP manual control before ARM AI"}, status=409)
+    body = await _body(request)
+    try:
+        state = request.app[AI_ADMIN].start(body.get("nats_url", ""), request.app[CONTROL_URL],
+                                            allow_dry_run=request.app[CTRL].status()["pwm_status"] == "DRY-RUN")
+    except (OSError, TypeError, ValueError) as exc:
+        return web.json_response({"ok": False, "error": str(exc)}, status=400)
+    return web.json_response({"ok": True, "ai": state})
+
+
+async def api_ai_stop(request):
+    request.app[CTRL].stop("STOP AI")
+    return web.json_response({"ok": True, "ai": await asyncio.to_thread(request.app[AI_ADMIN].stop)})
+
+
+async def api_camera_record_start(request):
+    try:
+        path = request.app[CAMERA].start_recording()
+    except (OSError, RuntimeError) as exc:
+        return web.json_response({"ok": False, "error": str(exc)}, status=409)
+    return web.json_response({"ok": True, "file": path})
+
+
+async def api_camera_record_stop(request):
+    path = request.app[CAMERA].stop_recording()
+    return web.json_response({"ok": True, "file": path})
+
+
+async def camera_stream(request):
+    camera = request.app[CAMERA]
+    if not camera.status()["configured"]:
+        raise web.HTTPServiceUnavailable(text="camera is not configured")
+    response = web.StreamResponse(headers={
+        "Content-Type": "multipart/x-mixed-replace; boundary=frame",
+        "Cache-Control": "no-store",
+    })
+    await response.prepare(request)
+    last_id = -1
+    try:
+        while True:
+            frame_id, frame = await asyncio.to_thread(camera.wait_frame, last_id)
+            if frame_id is None:
+                break
+            if frame is None or frame_id == last_id:
+                continue
+            last_id = frame_id
+            await response.write(
+                b"--frame\r\nContent-Type: image/jpeg\r\nContent-Length: " +
+                str(len(frame)).encode("ascii") + b"\r\n\r\n" + frame + b"\r\n")
+    except (ConnectionError, asyncio.CancelledError):
+        pass
+    return response
 
 
 async def api_center(request):
@@ -110,7 +184,10 @@ async def ws_handler(request):
     async def push():
         try:
             while not ws.closed:
-                await ws.send_str(json.dumps(ctrl.status(cid)))
+                status = ctrl.status(cid)
+                status["ai"] = request.app[AI_ADMIN].status()
+                status["camera"] = request.app[CAMERA].status()
+                await ws.send_str(json.dumps(status))
                 await asyncio.sleep(STATUS_PUSH_S)
         except ConnectionError:
             pass
@@ -140,6 +217,8 @@ async def ws_handler(request):
 async def on_shutdown(app):
     # Neutral first, then drop browsers so graceful shutdown does not wait on them.
     app[CTRL].begin_shutdown()
+    await asyncio.to_thread(app[AI_ADMIN].stop)
+    await asyncio.to_thread(app[CAMERA].stop)
     for ws in list(app[SOCKETS]):
         await ws.close(code=1001, message=b"server shutdown")
 
@@ -152,10 +231,13 @@ async def no_cache(request, handler):
     return resp
 
 
-def create_app(ctrl):
+def create_app(ctrl, ai_admin, control_url, camera):
     app = web.Application(middlewares=[no_cache])
     app[CTRL] = ctrl
     app[SOCKETS] = weakref.WeakSet()
+    app[AI_ADMIN] = ai_admin
+    app[CONTROL_URL] = control_url
+    app[CAMERA] = camera
     app.on_shutdown.append(on_shutdown)
     app.router.add_get("/", index)
     app.router.add_get("/api/status", api_status)
@@ -165,8 +247,14 @@ def create_app(ctrl):
     app.router.add_post("/api/center", api_center)
     app.router.add_post("/api/web-control", api_web_control)
     app.router.add_post("/api/heartbeat", api_heartbeat)
+    app.router.add_post("/api/ai/config", api_ai_config)
+    app.router.add_post("/api/ai/start", api_ai_start)
+    app.router.add_post("/api/ai/stop", api_ai_stop)
+    app.router.add_post("/api/camera/record/start", api_camera_record_start)
+    app.router.add_post("/api/camera/record/stop", api_camera_record_stop)
+    app.router.add_get("/api/camera/stream.mjpg", camera_stream)
     app.router.add_get("/ws", ws_handler)
-    app.router.add_static("/static", BASE / "static")
+    app.router.add_static("/static", BASE / "web" / "static")
     return app
 
 
@@ -211,10 +299,18 @@ def main():
     signal.signal(signal.SIGHUP, _hup)
 
     log.info("Web UI: http://%s:%d  (%s)", args.host, args.port, "DRY-RUN" if args.dry_run else "HARDWARE PWM")
+    camera = None
     try:
-        web.run_app(create_app(ctrl), host=args.host, port=args.port, print=None,
+        ai_admin = AiAdmin(os.environ.get("JETSON_AI_CONFIG", "config/ai.json"))
+        camera_path = Path(os.environ.get("JETSON_CAMERA_CONFIG", "config/camera.json"))
+        camera = CameraManager(CameraConfig(**json.loads(camera_path.read_text())) if camera_path.exists() else None,
+                               os.environ.get("JETSON_RECORDINGS_DIR", "recordings"))
+        camera.start()
+        web.run_app(create_app(ctrl, ai_admin, "http://127.0.0.1:%d" % args.port, camera), host=args.host, port=args.port, print=None,
                     handle_signals=True, shutdown_timeout=2.0)
     finally:
+        if camera is not None:
+            camera.stop()
         ctrl.shutdown()
         rc.stop()
         tuning.restore()
