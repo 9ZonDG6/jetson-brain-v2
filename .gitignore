@@ -216,3 +216,5 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+# Local AI output mapping is specific to the wired vehicle.
+robot-control/ai-config.json

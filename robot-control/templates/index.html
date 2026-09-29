@@ -1,0 +1,117 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Robot Control</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <header class="top">
+    <h1>Robot Control</h1>
+    <div class="chips">
+      <span class="chip" id="c-jetson"><i></i>Jetson <b>…</b></span>
+      <span class="chip" id="c-pwm"><i></i>PWM out <b>…</b></span>
+      <span class="chip" id="c-rc"><i></i>RC <b>…</b></span>
+    </div>
+  </header>
+
+  <section id="banner" class="banner warn">
+    <div>
+      <div class="banner-cap">РЕЖИМ</div>
+      <div class="banner-mode" id="mode">…</div>
+    </div>
+    <div class="banner-text" id="mode-text">Подключение…</div>
+  </section>
+
+  <div id="toast" class="toast hidden"></div>
+
+  <main class="grid">
+    <section class="card">
+      <h2>Пульт RC <span>вход · pin 29 / 31</span></h2>
+      <div class="ch" data-ch="ch1">
+        <div class="ch-head"><span class="ch-name">CH1</span><span class="ch-val">—</span><span class="pill">—</span></div>
+        <div class="meter"><div class="fill"></div><div class="zero"></div></div>
+        <div class="scale"><span>1000</span><span>1500</span><span>2000</span></div>
+        <div class="meta">—</div>
+      </div>
+      <div class="ch" data-ch="ch2">
+        <div class="ch-head"><span class="ch-name">CH2</span><span class="ch-val">—</span><span class="pill">—</span></div>
+        <div class="meter"><div class="fill"></div><div class="zero"></div></div>
+        <div class="scale"><span>1000</span><span>1500</span><span>2000</span></div>
+        <div class="meta">—</div>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>Выход на контроллер <span>pin 32 / 33 · 50 Hz</span></h2>
+      <div class="ch" data-ch="out1">
+        <div class="ch-head"><span class="ch-name">OUT1</span><span class="ch-val">—</span><span class="sub">—</span></div>
+        <div class="meter"><div class="fill"></div><div class="zero"></div></div>
+        <div class="scale"><span>1000</span><span>1500</span><span>2000</span></div>
+      </div>
+      <div class="ch" data-ch="out2">
+        <div class="ch-head"><span class="ch-name">OUT2</span><span class="ch-val">—</span><span class="sub">—</span></div>
+        <div class="meter"><div class="fill"></div><div class="zero"></div></div>
+        <div class="scale"><span>1000</span><span>1500</span><span>2000</span></div>
+      </div>
+      <div class="source">Источник: <b id="source">—</b></div>
+    </section>
+
+    <section class="card wide">
+      <div class="controls">
+        <div class="switch">
+          <button id="btn-arm-rc" class="seg"><small>ARM</small>RC CONTROL</button>
+          <button id="btn-arm-web" class="seg"><small>ARM</small>WEB CONTROL</button>
+        </div>
+        <button id="btn-stop" class="stop">STOP<small>пробел</small></button>
+      </div>
+
+      <div id="web" class="web locked">
+        <div class="web-head">
+          <h2>Управление из браузера</h2>
+          <span class="web-state" id="web-state">—</span>
+          <button id="btn-center" class="small">CENTER</button>
+        </div>
+
+        <div class="slider">
+          <div class="slider-head"><span>OUT1</span><b id="w1v">1500 us</b></div>
+          <div class="range"><div class="meter"><div class="fill"></div><div class="zero"></div></div>
+            <input type="range" id="w1" min="1000" max="2000" step="1" value="1500"></div>
+          <div class="scale"><span>1000</span><span>1500</span><span>2000</span></div>
+        </div>
+
+        <div class="slider">
+          <div class="slider-head"><span>OUT2</span><b id="w2v">1500 us</b></div>
+          <div class="range"><div class="meter"><div class="fill"></div><div class="zero"></div></div>
+            <input type="range" id="w2" min="1000" max="2000" step="1" value="1500"></div>
+          <div class="scale"><span>1000</span><span>1500</span><span>2000</span></div>
+        </div>
+
+        <div class="keys-help">
+          <span><kbd>W</kbd><kbd>S</kbd> вперёд / назад</span>
+          <span><kbd>A</kbd><kbd>D</kbd> разворот</span>
+          <span><kbd>W</kbd>+<kbd>A</kbd> дуга</span>
+          <span><kbd>Пробел</kbd> STOP</span>
+        </div>
+
+        <div class="power">
+          <span>Сила WASD ±<b id="pwv">150</b> us</span>
+          <input type="range" id="power" min="20" max="500" step="10" value="150">
+        </div>
+
+        <div class="mix">
+          <span>Если едет не туда:</span>
+          <label><input type="checkbox" id="mix-swap"> поменять OUT1 ↔ OUT2</label>
+          <label><input type="checkbox" id="mix-inv1"> инвертировать OUT1</label>
+          <label><input type="checkbox" id="mix-inv2"> инвертировать OUT2</label>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer>Tegra PWM 8 бит: шаг 78 us при 50 Hz, реальная нейтраль 1484 us. WASD действуют пока зажаты: отпустил → 1500.</footer>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>

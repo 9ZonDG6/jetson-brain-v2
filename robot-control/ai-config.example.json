@@ -1,0 +1,12 @@
+{
+  "left_output": null,
+  "right_output": null,
+  "left_sign": null,
+  "right_sign": null,
+  "drive_delta_us": 50,
+  "turn_delta_us": 50,
+  "full_steering_angle_deg": 30.0,
+  "min_inliers": 20,
+  "timeout_s": 0.5,
+  "max_source_age_s": 0.5
+}
