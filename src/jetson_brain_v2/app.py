@@ -37,6 +37,7 @@ SOCKETS = web.AppKey("sockets", weakref.WeakSet)
 AI_ADMIN = web.AppKey("ai_admin", AiAdmin)
 CONTROL_URL = web.AppKey("control_url", str)
 CAMERA = web.AppKey("camera", CameraManager)
+PREVIEW_JOBS = web.AppKey("preview_jobs", dict)
 NATS_MONITOR = web.AppKey("nats_monitor", NatsMonitor)
 
 
@@ -147,15 +148,57 @@ async def api_camera_recording_download(request):
 
 async def api_camera_recording_preview(request):
     try:
-        path = await asyncio.to_thread(request.app[CAMERA].preview_file, request.match_info["name"])
+        path = request.app[CAMERA].prepared_preview_file(request.match_info["name"])
     except FileNotFoundError:
         raise web.HTTPNotFound()
-    except RuntimeError as exc:
-        raise web.HTTPConflict(text=str(exc))
-    except (OSError, subprocess.CalledProcessError) as exc:
-        log.error("video preview failed: %s", exc)
-        raise web.HTTPInternalServerError(text="video conversion failed")
+    if path is None:
+        raise web.HTTPConflict(text="video preview is not ready")
     return web.FileResponse(path, headers={"Content-Type": "video/mp4"})
+
+
+async def api_camera_recording_prepare(request):
+    name = request.match_info["name"]
+    camera = request.app[CAMERA]
+    try:
+        ready = camera.prepared_preview_file(name) is not None
+    except FileNotFoundError:
+        raise web.HTTPNotFound()
+    jobs = request.app[PREVIEW_JOBS]
+    job = jobs.get(name)
+    if not ready and (job is None or job.done()):
+        jobs[name] = asyncio.create_task(asyncio.to_thread(camera.preview_file, name))
+    return web.json_response({"ok": True, "ready": ready})
+
+
+async def api_camera_recording_preview_status(request):
+    name = request.match_info["name"]
+    try:
+        ready = request.app[CAMERA].prepared_preview_file(name) is not None
+    except FileNotFoundError:
+        raise web.HTTPNotFound()
+    job = request.app[PREVIEW_JOBS].get(name)
+    if job is not None and job.done() and not ready:
+        try:
+            job.result()
+        except (OSError, RuntimeError, subprocess.CalledProcessError) as exc:
+            log.error("video preview failed: %s", exc)
+            return web.json_response({"ok": False, "error": "Не удалось подготовить видео"}, status=500)
+    return web.json_response({"ok": True, "ready": ready})
+
+
+async def api_camera_recording_delete(request):
+    name = request.match_info["name"]
+    job = request.app[PREVIEW_JOBS].get(name)
+    if job is not None and not job.done():
+        return web.json_response({"ok": False, "error": "Сначала дождитесь подготовки видео"}, status=409)
+    try:
+        await asyncio.to_thread(request.app[CAMERA].delete_recording, name)
+    except FileNotFoundError:
+        raise web.HTTPNotFound()
+    except RuntimeError:
+        return web.json_response({"ok": False, "error": "Сначала остановите запись"}, status=409)
+    request.app[PREVIEW_JOBS].pop(name, None)
+    return web.json_response({"ok": True})
 
 
 async def camera_stream(request):
@@ -281,6 +324,7 @@ def create_app(ctrl, ai_admin, control_url, camera, nats_monitor):
     app[AI_ADMIN] = ai_admin
     app[CONTROL_URL] = control_url
     app[CAMERA] = camera
+    app[PREVIEW_JOBS] = {}
     app[NATS_MONITOR] = nats_monitor
     app.cleanup_ctx.append(nats_monitor_context)
     app.on_shutdown.append(on_shutdown)
@@ -300,6 +344,9 @@ def create_app(ctrl, ai_admin, control_url, camera, nats_monitor):
     app.router.add_get("/api/camera/recordings", api_camera_recordings)
     app.router.add_get("/api/camera/recordings/{name}/download", api_camera_recording_download)
     app.router.add_get("/api/camera/recordings/{name}/preview", api_camera_recording_preview)
+    app.router.add_post("/api/camera/recordings/{name}/prepare", api_camera_recording_prepare)
+    app.router.add_get("/api/camera/recordings/{name}/preview/status", api_camera_recording_preview_status)
+    app.router.add_post("/api/camera/recordings/{name}/delete", api_camera_recording_delete)
     app.router.add_get("/api/camera/stream.mjpg", camera_stream)
     app.router.add_get("/ws", ws_handler)
     app.router.add_static("/static", BASE / "web" / "static")

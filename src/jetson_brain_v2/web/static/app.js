@@ -242,18 +242,63 @@ async function refreshRecordings() {
       view.className = "small";
       view.textContent = "Смотреть";
       view.disabled = item.recording;
-      view.onclick = () => {
+      view.onclick = async () => {
+        const selected = item.name;
+        selectedRecording = selected;
         const player = $("recording-player");
-        player.classList.remove("hidden");
-        player.src = `/api/camera/recordings/${name}/preview`;
-        player.scrollIntoView({ behavior: "smooth", block: "nearest" });
-        toast("Подготавливаем видео для просмотра. Большая запись может открываться дольше.");
+        player.pause();
+        player.removeAttribute("src");
+        player.load();
+        player.classList.add("hidden");
+        $("recordings-state").textContent = `Подготавливается ${selected}… Большая запись может занять несколько минут.`;
+        const started = await post(`/api/camera/recordings/${name}/prepare`);
+        if (!started.ok) return;
+        while (selectedRecording === selected) {
+          let state;
+          try {
+            const response = await fetch(`/api/camera/recordings/${name}/preview/status`);
+            if (!response.ok) throw new Error(`HTTP ${response.status}`);
+            state = await response.json();
+          } catch (error) {
+            $("recordings-state").textContent = `Не удалось подготовить видео: ${error}`;
+            return;
+          }
+          if (selectedRecording !== selected) return;
+          if (state.ready) {
+            player.src = `/api/camera/recordings/${name}/preview`;
+            player.classList.remove("hidden");
+            player.scrollIntoView({ behavior: "smooth", block: "nearest" });
+            $("recordings-state").textContent = `Готово к просмотру: ${selected}`;
+            player.load();
+            return;
+          }
+          await new Promise((resolve) => setTimeout(resolve, 2000));
+        }
       };
       const download = document.createElement("a");
       download.className = "small recording-download";
       download.textContent = "Скачать AVI";
       download.href = `/api/camera/recordings/${name}/download`;
-      actions.append(view, download);
+      const remove = document.createElement("button");
+      remove.className = "small recording-delete";
+      remove.textContent = "Удалить";
+      remove.disabled = item.recording;
+      remove.onclick = async () => {
+        if (!confirm(`Удалить запись ${item.name}? Восстановить её будет нельзя.`)) return;
+        const result = await post(`/api/camera/recordings/${name}/delete`);
+        if (!result.ok) return;
+        if (selectedRecording === item.name) {
+          selectedRecording = null;
+          const player = $("recording-player");
+          player.pause();
+          player.removeAttribute("src");
+          player.load();
+          player.classList.add("hidden");
+        }
+        toast(`Запись удалена: ${item.name}`);
+        refreshRecordings();
+      };
+      actions.append(view, download, remove);
       row.append(info, actions);
       list.append(row);
     }
@@ -262,6 +307,11 @@ async function refreshRecordings() {
   }
 }
 
+let selectedRecording = null;
+$("recording-player").onerror = () => {
+  if (!$("recording-player").classList.contains("hidden"))
+    $("recordings-state").textContent = "Браузер не смог открыть видео. Попробуйте скачать AVI.";
+};
 $("btn-recordings-refresh").onclick = refreshRecordings;
 refreshRecordings();
 

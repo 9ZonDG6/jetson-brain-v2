@@ -27,8 +27,12 @@ class CameraTests(unittest.TestCase):
                 preview = camera.preview_file(Path(path).name)
                 self.assertGreater(preview.stat().st_size, 1000)
                 self.assertEqual(camera.preview_file(Path(path).name), preview)
+                self.assertEqual(camera.prepared_preview_file(Path(path).name), preview)
                 with self.assertRaises(FileNotFoundError):
                     camera.recording_file("../outside.avi")
+                camera.delete_recording(Path(path).name)
+                self.assertFalse(Path(path).exists())
+                self.assertFalse(preview.exists())
             finally:
                 camera.stop()
 

@@ -190,6 +190,7 @@ button:disabled { opacity: .45; cursor: not-allowed; }
 .recording-info small { color: var(--muted); }
 .recording-actions { display: flex; flex-wrap: wrap; gap: 8px; flex-shrink: 0; }
 .recording-actions button.small { margin: 0; }
+.recording-actions .recording-delete { color: var(--bad); }
 .recording-download { display: inline-flex; align-items: center; padding: 6px 16px; border: 1px solid var(--line); border-radius: 8px; background: #20252c; color: var(--fg); font-weight: 700; text-decoration: none; }
 @media (max-width: 600px) { .recording-row { align-items: flex-start; flex-direction: column; } }
 

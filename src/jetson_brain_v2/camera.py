@@ -150,6 +150,22 @@ class CameraManager:
                 temporary.unlink(missing_ok=True)
         return preview
 
+    def prepared_preview_file(self, name):
+        source = self.recording_file(name)
+        preview = self.recordings_dir / ".preview" / (name + ".mp4")
+        if preview.is_file() and not preview.is_symlink() and preview.stat().st_mtime_ns >= source.stat().st_mtime_ns:
+            return preview
+        return None
+
+    def delete_recording(self, name):
+        with self._lock:
+            source = self.recording_file(name)
+            if self._record_queue is not None and self._record_path == source:
+                raise RuntimeError("stop recording before deleting it")
+        with self._preview_lock:
+            source.unlink()
+            (self.recordings_dir / ".preview" / (name + ".mp4")).unlink(missing_ok=True)
+
     def start(self):
         if self.config is None or self._capture_thread is not None:
             return
