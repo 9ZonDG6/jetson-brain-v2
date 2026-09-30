@@ -16,6 +16,7 @@ log = logging.getLogger("safety")
 TICK_S = 0.02
 HEARTBEAT_TIMEOUT_S = 0.5
 RC_ARM_CENTER_TOL_US = 100
+RC_INVALID_GRACE_S = 0.25
 
 DISARMED = "DISARMED"
 RC_ARMED = "RC_ARMED"
@@ -39,6 +40,7 @@ class SafetyController:
         self._owner = None
         self._last_hb = 0.0
         self._rc_overall = None
+        self._rc_invalid_since = None
         self._shutting_down = False
         self._lock = threading.RLock()
         self._stop_evt = threading.Event()
@@ -85,6 +87,7 @@ class SafetyController:
             self._owner = None
             self._web = NEUTRAL
             self.fault = None
+            self._rc_invalid_since = None
             self.mode = RC_ARMED
             self._apply(NEUTRAL)
             log.info("ARM RC")
@@ -98,6 +101,7 @@ class SafetyController:
             self._owner = client_id
             self._last_hb = time.monotonic()
             self.fault = None
+            self._rc_invalid_since = None
             self.mode = WEB_ARMED
             self._apply(NEUTRAL)
             log.info("ARM WEB")
@@ -106,6 +110,7 @@ class SafetyController:
         with self._lock:
             self.mode = DISARMED
             self.fault = None
+            self._rc_invalid_since = None
             self._owner = None
             self._web = NEUTRAL
             self._apply(NEUTRAL)
@@ -149,6 +154,8 @@ class SafetyController:
                 "ch2_age_ms": rc["CH2"]["age_ms"],
                 "ch1_hz": rc["CH1"]["hz"],
                 "ch2_hz": rc["CH2"]["hz"],
+                "ch1_bad_us": rc["CH1"]["last_bad_us"],
+                "ch2_bad_us": rc["CH2"]["last_bad_us"],
                 "ch1_status": rc["CH1"]["status"],
                 "ch2_status": rc["CH2"]["status"],
                 "out1_us": out[0],
@@ -219,9 +226,18 @@ class SafetyController:
                 self._rc_overall = overall
 
             if self.mode == RC_ARMED:
-                if overall != "CONNECTED":
+                if overall == "INVALID":
+                    now = time.monotonic()
+                    if self._rc_invalid_since is None:
+                        self._rc_invalid_since = now
+                    if now - self._rc_invalid_since >= RC_INVALID_GRACE_S:
+                        self._fault("RC receiver invalid")
+                    else:
+                        self._apply(NEUTRAL)
+                elif overall != "CONNECTED":
                     self._fault("RC receiver %s" % overall.lower())
                 else:
+                    self._rc_invalid_since = None
                     self._apply((rc["CH1"]["us"], rc["CH2"]["us"]))
             elif self.mode == WEB_ARMED:
                 if time.monotonic() - self._last_hb > HEARTBEAT_TIMEOUT_S:
