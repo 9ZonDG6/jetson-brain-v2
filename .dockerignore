@@ -1,0 +1,7 @@
+*
+!Dockerfile
+!wheels/
+!wheels/*.whl
+!vendor/
+!vendor/ffmpeg
+!vendor/ffprobe

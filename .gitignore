@@ -220,3 +220,5 @@ __marimo__/
 config/ai.json
 config/camera.json
 recordings/
+nats-data/
+vendor/

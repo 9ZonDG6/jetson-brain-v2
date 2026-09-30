@@ -1,0 +1,28 @@
+services:
+  nats:
+    image: nats:2.12.0
+    command: ["-js", "-sd", "/data"]
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:4222:4222"
+    volumes:
+      - ./nats-data:/data
+
+  control:
+    build: .
+    image: jetson-brain-v2-control:local
+    restart: unless-stopped
+    privileged: true
+    network_mode: host
+    depends_on:
+      - nats
+    working_dir: /opt/app
+    volumes:
+      - ./config:/opt/app/config
+      - ./recordings:/opt/app/recordings
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/api/status', timeout=2).close()"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+    stop_grace_period: 5s
