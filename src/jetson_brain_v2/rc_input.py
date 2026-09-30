@@ -7,7 +7,7 @@ Uses GPIO_GET_LINEEVENT_IOCTL (uAPI v1, available on L4T kernel 4.9) directly,
 no libgpiod needed. Pulse width = falling.timestamp - rising.timestamp, both
 timestamps taken by the kernel. On 4.9 the timestamp is taken in the threaded
 IRQ handler (CLOCK_REALTIME), so under heavy load expect tens of us of jitter;
-a median of the last 3 pulses is used to suppress single outliers.
+a median of the last 7 pulses rejects short bursts of false stick commands.
 """
 
 import errno
@@ -46,7 +46,7 @@ class _Channel:
         self.line = line
         self.fd = None
         self.last_rise_ns = None
-        self.pulses = deque(maxlen=3)
+        self.pulses = deque(maxlen=7)
         self.pulse_us = None
         self.period_us = None
         self.last_valid_mono = None
