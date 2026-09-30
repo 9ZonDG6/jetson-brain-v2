@@ -1,8 +1,8 @@
 {
   "kind": "usb",
   "device": "/dev/video0",
-  "width": 640,
-  "height": 480,
-  "fps": 15,
+  "width": 1280,
+  "height": 720,
+  "fps": 30,
   "input_format": "mjpeg"
 }

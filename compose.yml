@@ -18,6 +18,8 @@ services:
     depends_on:
       - nats
     working_dir: /opt/app
+    environment:
+      TZ: Asia/Yekaterinburg
     volumes:
       - ./config:/opt/app/config
       - ./recordings:/opt/app/recordings
