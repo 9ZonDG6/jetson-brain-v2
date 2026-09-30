@@ -219,6 +219,7 @@ __marimo__/
 # Local AI output mapping is specific to the wired vehicle.
 config/ai.json
 config/camera.json
+config/focus.json
 recordings/
 nats-data/
 vendor/

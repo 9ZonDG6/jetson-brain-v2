@@ -1,6 +1,7 @@
 """Single camera capture shared by MJPEG preview and local AVI recording."""
 
 import logging
+import json
 import os
 import queue
 import subprocess
@@ -8,6 +9,8 @@ import threading
 import time
 from dataclasses import dataclass
 from pathlib import Path
+
+from .camera_focus import focus_status, set_focus
 
 log = logging.getLogger("camera")
 MAX_FRAME_BYTES = 8 * 1024 * 1024
@@ -88,9 +91,11 @@ def jpeg_frames(stream):
 
 
 class CameraManager:
-    def __init__(self, config, recordings_dir):
+    def __init__(self, config, recordings_dir, focus_settings_path=None):
         self.config = config
         self.recordings_dir = Path(recordings_dir)
+        self.focus_settings_path = Path(focus_settings_path) if focus_settings_path else None
+        self._focus_lock = threading.Lock()
         self._lock = threading.Lock()
         self._condition = threading.Condition(self._lock)
         self._stopping = threading.Event()
@@ -172,8 +177,32 @@ class CameraManager:
     def start(self):
         if self.config is None or self._capture_thread is not None:
             return
+        if self.config.kind == "usb" and self.focus_settings_path and self.focus_settings_path.exists():
+            try:
+                saved = json.loads(self.focus_settings_path.read_text())
+                self.set_focus(auto=saved["auto"], value=None if saved["auto"] else saved["value"], persist=False)
+            except (OSError, ValueError, KeyError, TypeError) as exc:
+                log.warning("camera focus settings could not be restored: %s", exc)
         self._capture_thread = threading.Thread(target=self._capture_loop, name="camera", daemon=True)
         self._capture_thread.start()
+
+    def focus_status(self):
+        if self.config is None or self.config.kind != "usb":
+            raise RuntimeError("manual focus requires a USB camera")
+        with self._focus_lock:
+            return focus_status(self.config.device)
+
+    def set_focus(self, *, auto=None, value=None, persist=True):
+        if self.config is None or self.config.kind != "usb":
+            raise RuntimeError("manual focus requires a USB camera")
+        with self._focus_lock:
+            state = set_focus(self.config.device, auto=auto, value=value)
+            if persist and self.focus_settings_path:
+                self.focus_settings_path.parent.mkdir(parents=True, exist_ok=True)
+                temporary = self.focus_settings_path.with_suffix(".tmp")
+                temporary.write_text(json.dumps({"auto": state["auto"], "value": state["value"]}))
+                os.replace(temporary, self.focus_settings_path)
+            return state
 
     def stop(self):
         self._stopping.set()

@@ -182,6 +182,11 @@ kbd {
 .panel-actions button.seg { flex: 0 1 150px; border: 1px solid var(--line); border-radius: 8px; }
 button:disabled { opacity: .45; cursor: not-allowed; }
 .camera-preview { display: block; max-width: 100%; width: 800px; margin-top: 14px; border-radius: 8px; background: #000; }
+.focus-control { margin-top: 20px; padding-top: 14px; border-top: 1px solid var(--line); }
+.focus-control h3 { display: inline; margin: 0 10px 0 0; font-size: 15px; }
+.focus-slider { display: grid; gap: 8px; max-width: 800px; margin-top: 15px; color: var(--muted); }
+.focus-slider b { color: var(--fg); }
+.focus-slider input { width: 100%; accent-color: var(--ok); }
 .recordings-head { display: flex; align-items: center; gap: 12px; margin-top: 22px; }
 .recordings-head h3 { margin: 0; font-size: 15px; }
 .recordings-head button.small { margin-left: auto; }

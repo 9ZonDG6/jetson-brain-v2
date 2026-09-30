@@ -132,6 +132,28 @@ async def api_camera_record_stop(request):
     return web.json_response({"ok": True, "file": path})
 
 
+async def api_camera_focus(request):
+    try:
+        state = await asyncio.to_thread(request.app[CAMERA].focus_status)
+    except (OSError, RuntimeError) as exc:
+        return web.json_response({"ok": False, "error": str(exc)}, status=503)
+    return web.json_response({"ok": True, "focus": state})
+
+
+async def api_camera_focus_set(request):
+    body = await _body(request)
+    if not body or set(body) - {"auto", "value"}:
+        return web.json_response({"ok": False, "error": "Укажите режим или значение фокуса"}, status=400)
+    try:
+        state = await asyncio.to_thread(request.app[CAMERA].set_focus,
+                                        auto=body.get("auto"), value=body.get("value"))
+    except ValueError as exc:
+        return web.json_response({"ok": False, "error": str(exc)}, status=400)
+    except (OSError, RuntimeError) as exc:
+        return web.json_response({"ok": False, "error": str(exc)}, status=503)
+    return web.json_response({"ok": True, "focus": state})
+
+
 async def api_camera_recordings(request):
     try:
         recordings = request.app[CAMERA].recordings()
@@ -346,6 +368,8 @@ def create_app(ctrl, ai_admin, control_url, camera, nats_monitor):
     app.router.add_post("/api/ai/stop", api_ai_stop)
     app.router.add_post("/api/camera/record/start", api_camera_record_start)
     app.router.add_post("/api/camera/record/stop", api_camera_record_stop)
+    app.router.add_get("/api/camera/focus", api_camera_focus)
+    app.router.add_post("/api/camera/focus", api_camera_focus_set)
     app.router.add_get("/api/camera/recordings", api_camera_recordings)
     app.router.add_get("/api/camera/recordings/{name}/download", api_camera_recording_download)
     app.router.add_get("/api/camera/recordings/{name}/preview", api_camera_recording_preview)
@@ -404,7 +428,8 @@ def main():
         ai_admin = AiAdmin(os.environ.get("JETSON_AI_CONFIG", "config/ai.json"))
         camera_path = Path(os.environ.get("JETSON_CAMERA_CONFIG", "config/camera.json"))
         camera = CameraManager(CameraConfig(**json.loads(camera_path.read_text())) if camera_path.exists() else None,
-                               os.environ.get("JETSON_RECORDINGS_DIR", "recordings"))
+                               os.environ.get("JETSON_RECORDINGS_DIR", "recordings"),
+                               os.environ.get("JETSON_CAMERA_FOCUS_CONFIG", "config/focus.json"))
         camera.start()
         nats_monitor = NatsMonitor(os.environ.get("JETSON_NATS_URL", "nats://127.0.0.1:4222"))
         web.run_app(create_app(ctrl, ai_admin, "http://127.0.0.1:%d" % args.port, camera, nats_monitor), host=args.host, port=args.port, print=None,

@@ -162,6 +162,18 @@
       </div>
       <img id="camera-preview" class="camera-preview hidden" alt="Прямой поток с камеры">
       <p class="panel-note" id="camera-file"></p>
+      <div class="focus-control">
+        <h3>Фокус камеры</h3>
+        <span id="focus-state" class="panel-note">Проверка камеры…</span>
+        <div class="panel-actions">
+          <button id="btn-focus-auto" class="small" disabled>Автофокус</button>
+          <button id="btn-focus-manual" class="small" disabled>Ручной фокус</button>
+        </div>
+        <label class="focus-slider">Положение линзы: <b id="focus-value">—</b>
+          <input id="focus-range" type="range" min="0" max="1023" step="1" disabled>
+        </label>
+        <p class="panel-note">Для движения выберите ручной фокус и подберите резкость по прямому потоку. Значение сохранится после перезапуска.</p>
+      </div>
       <div class="recordings-head">
         <h3>Записанные видео</h3>
         <button id="btn-recordings-refresh" class="small">Обновить список</button>

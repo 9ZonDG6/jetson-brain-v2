@@ -27,7 +27,7 @@ tar -xJf "$FFMPEG_ARCHIVE" --wildcards --strip-components=1 \
   -C "$FFMPEG_DIR" '*/ffmpeg' '*/ffprobe'
 rsync -az --delete --exclude .git --exclude .venv --exclude __pycache__ \
   --exclude dist/ --exclude wheels/ --exclude vendor/ --exclude nats-data/ \
-  --exclude config/ai.json --exclude config/camera.json --exclude recordings/ \
+  --exclude config/ai.json --exclude config/camera.json --exclude config/focus.json --exclude recordings/ \
   -e "$SSH" ./ "$HOST:/home/jetson/jetson-brain-v2/"
 rsync -az --delete -e "$SSH" "$WHEEL_DIR/" "$HOST:/home/jetson/jetson-brain-v2/wheels/"
 rsync -az --delete -e "$SSH" "$FFMPEG_DIR/" "$HOST:/home/jetson/jetson-brain-v2/vendor/"

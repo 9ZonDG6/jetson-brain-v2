@@ -217,6 +217,47 @@ $("btn-camera-stop").onclick = async () => {
   }
 };
 
+function renderFocus(state) {
+  const range = $("focus-range");
+  range.min = state.min;
+  range.max = state.max;
+  range.step = state.step;
+  range.value = state.value;
+  range.disabled = state.auto;
+  $("focus-value").textContent = state.value;
+  $("focus-state").textContent = state.auto ? "Автофокус включён" : "Фокус зафиксирован";
+  $("btn-focus-auto").disabled = state.auto;
+  $("btn-focus-manual").disabled = !state.auto;
+}
+
+async function loadFocus() {
+  try {
+    const response = await fetch("/api/camera/focus");
+    const data = await response.json();
+    if (!data.ok) throw new Error(data.error || `HTTP ${response.status}`);
+    renderFocus(data.focus);
+  } catch (error) {
+    $("focus-state").textContent = `Настройки фокуса недоступны: ${error}`;
+  }
+}
+
+$("btn-focus-auto").onclick = async () => {
+  const result = await post("/api/camera/focus", { auto: true });
+  if (result.ok) renderFocus(result.focus);
+};
+$("btn-focus-manual").onclick = async () => {
+  const result = await post("/api/camera/focus", { auto: false });
+  if (result.ok) renderFocus(result.focus);
+};
+$("focus-range").oninput = (event) => {
+  $("focus-value").textContent = event.target.value;
+};
+$("focus-range").onchange = async (event) => {
+  const result = await post("/api/camera/focus", { value: Number(event.target.value) });
+  if (result.ok) renderFocus(result.focus);
+};
+loadFocus();
+
 async function refreshRecordings() {
   try {
     const response = await fetch("/api/camera/recordings");
