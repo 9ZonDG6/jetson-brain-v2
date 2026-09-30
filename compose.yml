@@ -5,6 +5,7 @@ services:
     restart: unless-stopped
     ports:
       - "127.0.0.1:4222:4222"
+      - "192.168.40.247:4222:4222"
     volumes:
       - ./nats-data:/data
 
