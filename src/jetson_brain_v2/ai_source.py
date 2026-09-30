@@ -1,6 +1,7 @@
 """Receive robot-vision localization messages without blocking motor safety."""
 
 import asyncio
+import json
 import logging
 import threading
 
@@ -25,6 +26,30 @@ class NatsAiSource:
     def start(self):
         self._thread = threading.Thread(target=self._run, name="ai-nats", daemon=True)
         self._thread.start()
+
+    def publish(self, subject, payload, timeout_s=2.0):
+        """Publish one JSON message on the already-open connection.
+
+        Returns False instead of raising when NATS is down, so callers can
+        decide whether a missing control message is fatal.
+        """
+        loop = self._loop
+        nc = self._nc
+        if loop is None or nc is None or not loop.is_running() or not nc.is_connected:
+            return False
+        data = json.dumps(payload).encode("utf-8")
+
+        async def send():
+            await nc.publish(subject, data)
+            await nc.flush(timeout=timeout_s)
+
+        future = asyncio.run_coroutine_threadsafe(send(), loop)
+        try:
+            future.result(timeout=timeout_s + 0.5)
+            return True
+        except Exception as exc:
+            log.error("NATS publish to %s failed: %s", subject, exc)
+            return False
 
     def close(self):
         self._closed.set()

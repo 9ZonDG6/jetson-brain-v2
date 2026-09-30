@@ -25,13 +25,30 @@ Pinmux для 32/33 приложение выставляет само при с
 С рабочей машины (из этого каталога):
 
 ```bash
-./scripts/deploy.sh  # rsync в jetson:/home/jetson/jetson-brain-v2 + uv sync
+./scripts/deploy.sh  # ARM64 wheelhouse, rsync и docker compose up -d
 ```
+
+На текущем Jetson плагин Compose установлен в `~/.docker/cli-plugins/`.
+Для сборки образа Jetson не требуется доступ к PyPI: скрипт переносит готовые
+ARM64 Python-пакеты и статический FFmpeg. Основной образ `python:3.14-slim-bookworm`
+должен быть заранее загружен в Docker. Рабочие конфигурации, `recordings/` и
+`nats-data/` скрипт не удаляет.
 
 ## Запуск
 
-Нужен root (`/dev/mem`, `/dev/gpiochip0`, pwm sysfs). Системный `python3` на Jetson — 3.6,
-поэтому запускать надо python из venv:
+Обычный запуск на Jetson — через Docker Compose. Контейнер управления получает
+доступ к PWM, GPIO и `/dev/mem`, а NATS слушает localhost:4222 и
+192.168.40.247:4222 для `robot-vision` в локальной сети:
+
+```bash
+cd ~/jetson-brain-v2
+docker compose up -d
+docker compose ps
+docker compose logs -f control
+```
+
+Для запуска вне контейнера нужен root (`/dev/mem`, `/dev/gpiochip0`, pwm sysfs).
+Системный `python3` на Jetson — 3.6, поэтому нужен Python 3.14 из venv:
 
 ```bash
 cd ~/jetson-brain-v2
@@ -144,6 +161,18 @@ Kernel GPIO line events (`GPIO_GET_LINEEVENT_IOCTL`, uAPI v1, без libgpiod), 
 Команды заднего хода пока дают нейтраль, поскольку прежняя логика разворота
 `robot-vision` рассчитана на другую кинематику.
 
+Пилот сам управляет состоянием `robot-vision` через `robot.vision.control`:
+если в админке выбран «Маршрут», перед стартом отправляет `pause` и `set_route` (`robot-vision` меняет маршрут только на паузе; список маршрутов захардкожен в его `module2_localization/config.py` → `ROUTES`, в админке он повторён вручную); после
+захвата WEB ARM отправляет `resume` (Pilot в `robot-vision` стартует на паузе и
+сам с неё не выходит); при остановке — `pause`. Пустой «Маршрут» оставляет
+тот, что уже выбран в `robot-vision`. Сообщения с `paused: true` считаются
+признаком живого источника, но всегда дают 1500/1500.
+
+`robot-vision` работает на отдельной машине, поэтому её часы и часы Jetson
+должны быть синхронизированы (NTP/chrony): команда старше 0.5 с по полю `ts`
+отбрасывается. Причина простоя видна в журнале пилота прямо в админке, например
+`producer timestamp 3.50 s old (limit 0.50 s; check clock sync)`.
+
 В админке есть `ARM ИИ` и «Остановить ИИ». Подруливание с пульта можно
 включить при сохранении конфигурации: режим «разница двух каналов» подходит
 для танкового пульта, «отдельный канал» — для стика руля. ИИ оставляет газ за
@@ -157,7 +186,7 @@ cp config/ai.example.json config/ai.json
 sudo ./scripts/run.sh
 .venv/bin/jetson-ai-pilot --config config/ai.json --nats-url nats://<nats-host>:4222
 # Эта команда только проверяет получение свежей локализации и показывает PWM.
-.venv/bin/jetson-ai-pilot --config config/ai.json --nats-url nats://<nats-host>:4222 --arm
+.venv/bin/jetson-ai-pilot --config config/ai.json --nats-url nats://<nats-host>:4222 --route <маршрут> --arm
 ```
 
 Для сквозной проверки без движения запустить `robot-control` с `--dry-run`,
@@ -188,7 +217,8 @@ sudo ./scripts/run.sh
 команда должна писать последовательные JPEG-кадры в stdout. Конкретный
 GStreamer-конвейер зависит от модели камеры и пока не проверен на Jetson.
 
-Админка показывает прямой MJPEG-поток и кнопки начала/остановки записи.
+Контейнер содержит статический FFmpeg для ARM64. Админка показывает прямой
+MJPEG-поток и кнопки начала/остановки записи.
 Поток и запись используют один захват камеры. Файлы сохраняются локально в
 `recordings/camera-YYYYMMDD-HHMMSS.avi` с MJPEG-видео, пригодным для
 последующей обработки; при деплое файлы и конфигурация камеры сохраняются.

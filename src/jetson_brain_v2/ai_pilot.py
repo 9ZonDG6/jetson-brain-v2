@@ -7,6 +7,7 @@ ends the lease; restarting the source never silently re-arms the vehicle.
 import argparse
 import json
 import logging
+import re
 import signal
 import time
 import urllib.error
@@ -44,11 +45,25 @@ def load_config(path):
     return AiConfig(**raw)
 
 
+ROUTE_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}$")
+
+
+def validate_route(route):
+    if route is None or route == "":
+        return None
+    if not isinstance(route, str) or not ROUTE_RE.match(route):
+        raise ValueError("route must be a robot-vision route id like 1-2 or polygon")
+    return route
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--config", required=True, help="calibrated PWM mapping JSON")
     parser.add_argument("--nats-url", required=True)
     parser.add_argument("--nats-subject", default="robot.vision.localization")
+    parser.add_argument("--nats-control-subject", default="robot.vision.control",
+                        help="robot-vision control subject for set_route/resume/pause")
+    parser.add_argument("--route", default=None, help="robot-vision route to select before driving")
     parser.add_argument("--control-url", default="http://127.0.0.1:8080")
     parser.add_argument("--arm", action="store_true", help="actually take the WEB control lease")
     parser.add_argument("--allow-dry-run", action="store_true", help="allow --arm against robot-control --dry-run")
@@ -57,6 +72,7 @@ def main():
 
     try:
         config = load_config(args.config)
+        route = validate_route(args.route)
     except (OSError, ValueError, TypeError) as exc:
         parser.error(str(exc))
     drive = AiDrive(config)
@@ -64,26 +80,51 @@ def main():
     source.start()
     client_id = "ai-" + uuid.uuid4().hex
     armed = False
+    resumed = False
     stopping = False
 
     def stop_signal(signum, frame):
         nonlocal stopping
         stopping = True
 
+    def control(cmd, **extra):
+        payload = {"cmd": cmd}
+        payload.update(extra)
+        ok = source.publish(args.nats_control_subject, payload)
+        log.info("robot-vision %s -> %s", payload, "sent" if ok else "FAILED")
+        return ok
+
     signal.signal(signal.SIGINT, stop_signal)
     signal.signal(signal.SIGTERM, stop_signal)
 
     try:
         deadline = time.monotonic() + 10.0
-        while not stopping and time.monotonic() < deadline:
-            output, reason, valid, received_at = drive.current()
-            if source.connected and valid and received_at is not None:
-                break
+        while not stopping and not source.connected:
             if source.error:
                 raise RuntimeError("NATS source failed: %s" % source.error)
+            if time.monotonic() > deadline:
+                raise RuntimeError("could not connect to NATS at %s within 10 seconds" % args.nats_url)
             time.sleep(0.1)
-        else:
-            raise RuntimeError("no fresh, valid AI localization within 10 seconds")
+
+        if route is not None and not stopping:
+            # robot-vision ignores set_route unless its pilots are paused
+            # ("сначала ПАУЗА, потом смена маршрута" in its control handler).
+            if not control("pause") or not control("set_route", route=route):
+                raise RuntimeError("could not send set_route to robot-vision")
+
+        # robot-vision publishes while paused too (paused=true), so wait for
+        # any message: it proves the producer is alive. Motion still needs a
+        # valid command -- paused/lost/stale all map to 1500/1500 below.
+        deadline = time.monotonic() + 10.0
+        while not stopping:
+            output, reason, valid, received_at = drive.current()
+            if received_at is not None:
+                break
+            if time.monotonic() > deadline:
+                raise RuntimeError("no localization from robot-vision within 10 seconds")
+            time.sleep(0.1)
+        if stopping:
+            return
 
         if not args.arm:
             log.info("preview only: %s -> %s; add --arm to drive", reason, output)
@@ -95,10 +136,18 @@ def main():
             raise RuntimeError("controller must be DISARMED with expected PWM mode")
         request_json(args.control_url, "/api/arm/web", {"client_id": client_id})
         armed = True
+        # robot-vision's pilot starts paused and never resumes on its own.
+        resumed = control("resume")
+        if not resumed:
+            raise RuntimeError("could not send resume to robot-vision")
         log.info("AI armed through WEB lease; press Ctrl+C to stop")
 
+        last_reason = None
         while not stopping:
             output, reason, valid, received_at = drive.current()
+            if (reason, valid) != last_reason:
+                log.info("AI: %s -> %s", reason, output if valid else (1500, 1500))
+                last_reason = (reason, valid)
             if not source.connected or received_at is None or reason == "AI command timeout":
                 log.error("AI source lost or timed out; stopping and disarming")
                 break
@@ -133,6 +182,8 @@ def main():
                     request_json(args.control_url, "/api/stop", {})
             except Exception:
                 log.error("could not confirm STOP; controller's 500 ms lease timeout remains active")
+        if resumed:
+            control("pause")
         source.close()
 
 

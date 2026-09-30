@@ -114,14 +114,22 @@ class AiDrive:
             raise ValueError("paused must be boolean")
         if "valid" in payload and type(payload["valid"]) is not bool:
             raise ValueError("valid must be boolean")
-        if move in ("stop", "lost") or payload.get("paused") is True or payload.get("valid") is False:
-            return (NEUTRAL_US, NEUTRAL_US), "AI %s" % move, False
+        if payload.get("paused") is True:
+            return (NEUTRAL_US, NEUTRAL_US), "AI paused by robot-vision", False
+        if move in ("stop", "lost") or payload.get("valid") is False:
+            return (NEUTRAL_US, NEUTRAL_US), "AI %s" % ("lost" if payload.get("valid") is False else move), False
 
         ts = payload.get("ts")
         if type(ts) not in (int, float) or not math.isfinite(ts):
             raise ValueError("producer timestamp missing or invalid")
-        if wall_now - ts > self.config.max_source_age_s or ts - wall_now > 5.0:
-            raise ValueError("producer timestamp stale or in future")
+        # robot-vision runs on a separate machine: a clock offset between it
+        # and this Jetson rejects every command, so say by how much.
+        age = wall_now - ts
+        if age > self.config.max_source_age_s:
+            raise ValueError("producer timestamp %.2f s old (limit %.2f s; check clock sync)" % (
+                age, self.config.max_source_age_s))
+        if -age > 5.0:
+            raise ValueError("producer timestamp %.2f s in the future (check clock sync)" % -age)
         inliers = payload.get("inliers")
         if type(inliers) is not int or inliers < self.config.min_inliers:
             raise ValueError("localization inliers below minimum")

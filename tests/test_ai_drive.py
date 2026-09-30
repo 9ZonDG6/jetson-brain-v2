@@ -45,6 +45,22 @@ class AiDriveTests(unittest.TestCase):
         self.assertEqual(reason, "AI command timeout")
         self.assertFalse(valid)
 
+    def test_stale_timestamp_reason_reports_clock_offset(self):
+        self.drive.ingest({"move_type": "straight", "deg": 0, "inliers": 30, "ts": 100}, now=10, wall_now=103.5)
+        _output, reason, valid, _ = self.drive.current(now=10.1)
+        self.assertFalse(valid)
+        self.assertIn("3.50 s old", reason)
+        self.assertIn("clock sync", reason)
+
+    def test_paused_producer_is_received_but_not_valid(self):
+        self.drive.ingest({"move_type": "straight", "deg": 0, "inliers": 30, "ts": 100, "paused": True},
+                          now=10, wall_now=100)
+        output, reason, valid, received_at = self.drive.current(now=10.1)
+        self.assertEqual(reason, "AI paused by robot-vision")
+        self.assertEqual(output, (1500, 1500))
+        self.assertFalse(valid)
+        self.assertEqual(received_at, 10)
+
     def test_tank_rc_steering_changes_turn_without_adding_throttle(self):
         config = AiConfig(
             left_output=2, right_output=1, left_sign=1, right_sign=1,

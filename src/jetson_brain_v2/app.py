@@ -21,6 +21,7 @@ from .ai_admin import AiAdmin
 from .camera import CameraConfig, CameraManager
 from .cpu_tuning import CpuTuning
 from .motor_io import MotorIO
+from .nats_monitor import NatsMonitor
 from .rc_input import RCInput
 from .safety import ArmError, SafetyController
 
@@ -34,6 +35,7 @@ SOCKETS = web.AppKey("sockets", weakref.WeakSet)
 AI_ADMIN = web.AppKey("ai_admin", AiAdmin)
 CONTROL_URL = web.AppKey("control_url", str)
 CAMERA = web.AppKey("camera", CameraManager)
+NATS_MONITOR = web.AppKey("nats_monitor", NatsMonitor)
 
 
 async def _body(request):
@@ -57,6 +59,7 @@ async def api_status(request):
     result = request.app[CTRL].status(_client_id(request))
     result["ai"] = request.app[AI_ADMIN].status()
     result["camera"] = request.app[CAMERA].status()
+    result["nats"] = request.app[NATS_MONITOR].status()
     return web.json_response(result)
 
 
@@ -101,7 +104,8 @@ async def api_ai_start(request):
     body = await _body(request)
     try:
         state = request.app[AI_ADMIN].start(body.get("nats_url", ""), request.app[CONTROL_URL],
-                                            allow_dry_run=request.app[CTRL].status()["pwm_status"] == "DRY-RUN")
+                                            allow_dry_run=request.app[CTRL].status()["pwm_status"] == "DRY-RUN",
+                                            route=body.get("route") or None)
     except (OSError, TypeError, ValueError) as exc:
         return web.json_response({"ok": False, "error": str(exc)}, status=400)
     return web.json_response({"ok": True, "ai": state})
@@ -187,6 +191,7 @@ async def ws_handler(request):
                 status = ctrl.status(cid)
                 status["ai"] = request.app[AI_ADMIN].status()
                 status["camera"] = request.app[CAMERA].status()
+                status["nats"] = request.app[NATS_MONITOR].status()
                 await ws.send_str(json.dumps(status))
                 await asyncio.sleep(STATUS_PUSH_S)
         except ConnectionError:
@@ -231,13 +236,24 @@ async def no_cache(request, handler):
     return resp
 
 
-def create_app(ctrl, ai_admin, control_url, camera):
+async def nats_monitor_context(app):
+    monitor = app[NATS_MONITOR]
+    monitor.start()
+    try:
+        yield
+    finally:
+        await monitor.stop()
+
+
+def create_app(ctrl, ai_admin, control_url, camera, nats_monitor):
     app = web.Application(middlewares=[no_cache])
     app[CTRL] = ctrl
     app[SOCKETS] = weakref.WeakSet()
     app[AI_ADMIN] = ai_admin
     app[CONTROL_URL] = control_url
     app[CAMERA] = camera
+    app[NATS_MONITOR] = nats_monitor
+    app.cleanup_ctx.append(nats_monitor_context)
     app.on_shutdown.append(on_shutdown)
     app.router.add_get("/", index)
     app.router.add_get("/api/status", api_status)
@@ -306,7 +322,8 @@ def main():
         camera = CameraManager(CameraConfig(**json.loads(camera_path.read_text())) if camera_path.exists() else None,
                                os.environ.get("JETSON_RECORDINGS_DIR", "recordings"))
         camera.start()
-        web.run_app(create_app(ctrl, ai_admin, "http://127.0.0.1:%d" % args.port, camera), host=args.host, port=args.port, print=None,
+        nats_monitor = NatsMonitor(os.environ.get("JETSON_NATS_URL", "nats://127.0.0.1:4222"))
+        web.run_app(create_app(ctrl, ai_admin, "http://127.0.0.1:%d" % args.port, camera, nats_monitor), host=args.host, port=args.port, print=None,
                     handle_signals=True, shutdown_timeout=2.0)
     finally:
         if camera is not None:

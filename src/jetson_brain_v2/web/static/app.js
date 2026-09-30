@@ -161,6 +161,9 @@ for (const k of ["swap", "inv1", "inv2"]) {
 }
 
 $("ai-nats-url").value = localStorage.getItem("ai-nats-url") || "";
+$("ai-route").value = localStorage.getItem("ai-route") || "";
+$("ai-route").addEventListener("change", () =>
+  localStorage.setItem("ai-route", $("ai-route").value));
 $("ai-nats-url").addEventListener("change", () =>
   localStorage.setItem("ai-nats-url", $("ai-nats-url").value.trim()));
 
@@ -170,7 +173,7 @@ $("btn-ai-save").onclick = async () => {
     drive_delta_us: Number($("ai-drive").value),
     turn_delta_us: Number($("ai-turn").value),
     rc_nudge_mode: $("ai-rc-mode").value,
-    rc_steering_channel: Number($("ai-rc-channel").value),
+    rc_steering_side: $("ai-rc-side").value,
     rc_steering_sign: Number($("ai-rc-sign").value),
   };
   const result = await post("/api/ai/config", data);
@@ -180,7 +183,9 @@ $("btn-ai-save").onclick = async () => {
 $("btn-ai-arm").onclick = async () => {
   const natsUrl = $("ai-nats-url").value.trim();
   localStorage.setItem("ai-nats-url", natsUrl);
-  const result = await post("/api/ai/start", { nats_url: natsUrl });
+  const route = $("ai-route").value;
+  localStorage.setItem("ai-route", route);
+  const result = await post("/api/ai/start", { nats_url: natsUrl, route });
   if (result.ok) toast("ИИ запускается; движение начнётся только при свежей локализации");
 };
 
@@ -268,6 +273,8 @@ const SOURCE = { DISARMED: "нейтраль 1500", RC_ARMED: "пульт RC", W
 
 function renderOffline() {
   setChip("c-jetson", "OFFLINE", "bad");
+  setChip("c-nats", "—", "bad");
+  $("vision-state").textContent = "Нет связи с Jetson";
   const b = $("banner");
   b.className = "banner bad";
   $("mode").textContent = "OFFLINE";
@@ -278,6 +285,15 @@ function render(s) {
   setChip("c-jetson", "ONLINE", "ok");
   setChip("c-pwm", s.pwm_status, s.pwm_status === "READY" ? "ok" : s.pwm_status === "DRY-RUN" ? "warn" : "bad");
   setChip("c-rc", s.rc_status, s.rc_status === "CONNECTED" ? "ok" : "bad");
+  const nats = s.nats || {};
+  setChip("c-nats", nats.connected ? "ONLINE" : "OFFLINE", nats.connected ? "ok" : "bad");
+  $("vision-state").textContent = !nats.connected
+    ? `NATS не подключён: ${nats.error || nats.url || "проверьте брокер"}`
+    : !nats.message_count
+      ? `NATS подключён (${nats.subject}); команд от robot-vision ещё не было`
+      : nats.recent
+        ? `robot-vision: ${nats.last_move_type || "сообщение"} · ${nats.last_message_age_ms} мс назад · всего ${nats.message_count}`
+        : `NATS подключён; нет свежих команд robot-vision (последняя ${Math.round(nats.last_message_age_ms / 1000)} с назад)`;
 
   const aiActive = !!(s.ai && s.ai.running);
   const [label, cls, text] = MODE[s.mode];
@@ -319,6 +335,8 @@ function render(s) {
   $("btn-ai-arm").classList.toggle("active", aiActive && s.mode === "WEB_ARMED");
   $("btn-ai-arm").disabled = aiActive || !s.ai || !s.ai.configured;
   $("btn-ai-save").disabled = aiActive;
+  const aiLog = (s.ai && s.ai.log_tail || []).join("\n");
+  if ($("ai-log").textContent !== aiLog) $("ai-log").textContent = aiLog;
 
   const camera = s.camera || {};
   $("camera-state").textContent = !camera.configured ? "Камера не настроена: создайте config/camera.json"

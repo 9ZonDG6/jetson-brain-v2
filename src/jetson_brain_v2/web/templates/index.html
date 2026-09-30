@@ -13,6 +13,7 @@
       <span class="chip" id="c-jetson"><i></i>Jetson <b>…</b></span>
       <span class="chip" id="c-pwm"><i></i>PWM out <b>…</b></span>
       <span class="chip" id="c-rc"><i></i>RC <b>…</b></span>
+      <span class="chip" id="c-nats"><i></i>NATS <b>…</b></span>
     </div>
   </header>
 
@@ -112,8 +113,19 @@
     <section class="card wide">
       <h2>ИИ-пилот <span>robot-vision → NATS → 4WD</span></h2>
       <p class="panel-note" id="ai-state">ИИ выключен</p>
+      <p class="panel-note" id="vision-state">NATS: подключение…</p>
       <div class="settings-grid">
         <label>NATS URL <input id="ai-nats-url" type="text" placeholder="nats://адрес:4222" autocomplete="off"></label>
+        <label>Маршрут
+          <select id="ai-route">
+            <option value="">— не менять —</option>
+            <option value="1-2">1-2</option>
+            <option value="1-2-short">1-2 short</option>
+            <option value="2-1">2-1</option>
+            <option value="2-1-short">2-1 short</option>
+            <option value="office">офис</option>
+          </select>
+        </label>
         <label>Ход, μs <input id="ai-drive" type="number" min="1" max="500" value="80"></label>
         <label>Поворот, μs <input id="ai-turn" type="number" min="1" max="500" value="80"></label>
         <label>Подруливание RC
@@ -123,8 +135,8 @@
             <option value="channel">отдельный канал</option>
           </select>
         </label>
-        <label>Канал поворота RC
-          <select id="ai-rc-channel"><option value="1">CH1</option><option value="2">CH2</option></select>
+        <label>Сторона поворота RC
+          <select id="ai-rc-side"><option value="left">левый борт</option><option value="right">правый борт</option></select>
         </label>
         <label>Знак канала RC
           <select id="ai-rc-sign"><option value="1">обычный</option><option value="-1">обратный</option></select>
@@ -136,6 +148,7 @@
         <button id="btn-ai-stop" class="small">Остановить ИИ</button>
       </div>
       <p class="panel-note">WASD должен ехать правильно до сохранения проводки. При потере команд ИИ выходы переходят в нейтраль.</p>
+      <pre class="ai-log" id="ai-log"></pre>
     </section>
 
     <section class="card wide">
