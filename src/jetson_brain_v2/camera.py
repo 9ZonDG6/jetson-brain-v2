@@ -103,7 +103,52 @@ class CameraManager:
         self._record_thread = None
         self._record_process = None
         self._record_path = None
+        self._preview_lock = threading.Lock()
         self.error = None
+
+    def recordings(self):
+        if not self.recordings_dir.is_dir():
+            return []
+        with self._lock:
+            active = self._record_path.name if self._record_queue is not None else None
+        files = []
+        for path in self.recordings_dir.iterdir():
+            if path.suffix.lower() != ".avi" or not path.is_file() or path.is_symlink():
+                continue
+            stat = path.stat()
+            files.append({"name": path.name, "size": stat.st_size,
+                          "modified": stat.st_mtime, "recording": path.name == active})
+        return sorted(files, key=lambda item: item["modified"], reverse=True)
+
+    def recording_file(self, name):
+        if not name or name != Path(name).name or not name.lower().endswith(".avi"):
+            raise FileNotFoundError(name)
+        path = self.recordings_dir / name
+        if not path.is_file() or path.is_symlink():
+            raise FileNotFoundError(name)
+        return path
+
+    def preview_file(self, name):
+        source = self.recording_file(name)
+        with self._lock:
+            if self._record_queue is not None and self._record_path == source:
+                raise RuntimeError("stop recording before viewing it")
+        preview = self.recordings_dir / ".preview" / (name + ".mp4")
+        with self._preview_lock:
+            if preview.is_file() and preview.stat().st_mtime_ns >= source.stat().st_mtime_ns:
+                return preview
+            preview.parent.mkdir(parents=True, exist_ok=True)
+            temporary = preview.with_suffix(".tmp")
+            try:
+                subprocess.run([
+                    "ffmpeg", "-hide_banner", "-loglevel", "error", "-nostdin", "-y",
+                    "-i", str(source), "-an", "-c:v", "libx264", "-preset", "ultrafast",
+                    "-pix_fmt", "yuv420p", "-movflags", "+faststart", "-f", "mp4", str(temporary),
+                ], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
+                os.replace(temporary, preview)
+            finally:
+                temporary.unlink(missing_ok=True)
+        return preview
 
     def start(self):
         if self.config is None or self._capture_thread is not None:

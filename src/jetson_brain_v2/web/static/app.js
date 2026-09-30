@@ -204,12 +204,66 @@ $("btn-camera-view").onclick = () => {
 };
 $("btn-camera-record").onclick = async () => {
   const result = await post("/api/camera/record/start");
-  if (result.ok) toast(`Запись началась: ${result.file}`);
+  if (result.ok) {
+    toast(`Запись началась: ${result.file}`);
+    refreshRecordings();
+  }
 };
 $("btn-camera-stop").onclick = async () => {
   const result = await post("/api/camera/record/stop");
-  if (result.ok) toast(result.file ? `Запись сохранена: ${result.file}` : "Запись не шла");
+  if (result.ok) {
+    toast(result.file ? `Запись сохранена: ${result.file}` : "Запись не шла");
+    refreshRecordings();
+  }
 };
+
+async function refreshRecordings() {
+  try {
+    const response = await fetch("/api/camera/recordings");
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    const { recordings } = await response.json();
+    const list = $("recordings-list");
+    list.replaceChildren();
+    $("recordings-state").textContent = recordings.length ? `${recordings.length} записей` : "Записей пока нет";
+    for (const item of recordings) {
+      const row = document.createElement("div");
+      row.className = "recording-row";
+      const info = document.createElement("div");
+      info.className = "recording-info";
+      const title = document.createElement("b");
+      title.textContent = item.name;
+      const details = document.createElement("small");
+      details.textContent = `${new Date(item.modified * 1000).toLocaleString("ru-RU")} · ${(item.size / 1048576).toFixed(1)} МБ${item.recording ? " · идёт запись" : ""}`;
+      info.append(title, details);
+      const actions = document.createElement("div");
+      actions.className = "recording-actions";
+      const name = encodeURIComponent(item.name);
+      const view = document.createElement("button");
+      view.className = "small";
+      view.textContent = "Смотреть";
+      view.disabled = item.recording;
+      view.onclick = () => {
+        const player = $("recording-player");
+        player.classList.remove("hidden");
+        player.src = `/api/camera/recordings/${name}/preview`;
+        player.scrollIntoView({ behavior: "smooth", block: "nearest" });
+        toast("Подготавливаем видео для просмотра. Большая запись может открываться дольше.");
+      };
+      const download = document.createElement("a");
+      download.className = "small recording-download";
+      download.textContent = "Скачать AVI";
+      download.href = `/api/camera/recordings/${name}/download`;
+      actions.append(view, download);
+      row.append(info, actions);
+      list.append(row);
+    }
+  } catch (error) {
+    $("recordings-state").textContent = `Не удалось загрузить записи: ${error}`;
+  }
+}
+
+$("btn-recordings-refresh").onclick = refreshRecordings;
+refreshRecordings();
 
 document.addEventListener("keydown", (e) => {
   if (e.code === "Space") {

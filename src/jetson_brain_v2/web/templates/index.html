@@ -162,6 +162,13 @@
       </div>
       <img id="camera-preview" class="camera-preview hidden" alt="Прямой поток с камеры">
       <p class="panel-note" id="camera-file"></p>
+      <div class="recordings-head">
+        <h3>Записанные видео</h3>
+        <button id="btn-recordings-refresh" class="small">Обновить список</button>
+      </div>
+      <p class="panel-note" id="recordings-state">Загрузка записей…</p>
+      <div id="recordings-list" class="recordings-list"></div>
+      <video id="recording-player" class="camera-preview hidden" controls playsinline preload="metadata"></video>
     </section>
   </main>
 

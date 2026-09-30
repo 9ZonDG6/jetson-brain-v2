@@ -182,6 +182,16 @@ kbd {
 .panel-actions button.seg { flex: 0 1 150px; border: 1px solid var(--line); border-radius: 8px; }
 button:disabled { opacity: .45; cursor: not-allowed; }
 .camera-preview { display: block; max-width: 100%; width: 800px; margin-top: 14px; border-radius: 8px; background: #000; }
+.recordings-head { display: flex; align-items: center; gap: 12px; margin-top: 22px; }
+.recordings-head h3 { margin: 0; font-size: 15px; }
+.recordings-head button.small { margin-left: auto; }
+.recording-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 0; border-top: 1px solid var(--line); }
+.recording-info { display: grid; gap: 2px; min-width: 0; overflow-wrap: anywhere; }
+.recording-info small { color: var(--muted); }
+.recording-actions { display: flex; flex-wrap: wrap; gap: 8px; flex-shrink: 0; }
+.recording-actions button.small { margin: 0; }
+.recording-download { display: inline-flex; align-items: center; padding: 6px 16px; border: 1px solid var(--line); border-radius: 8px; background: #20252c; color: var(--fg); font-weight: 700; text-decoration: none; }
+@media (max-width: 600px) { .recording-row { align-items: flex-start; flex-direction: column; } }
 
 footer { margin-top: 14px; color: var(--muted); font-size: 12px; text-align: center; }
 

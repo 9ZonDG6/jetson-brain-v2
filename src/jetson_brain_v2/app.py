@@ -11,11 +11,13 @@ import json
 import logging
 import os
 import signal
+import subprocess
 import uuid
 import weakref
 from pathlib import Path
 
 from aiohttp import WSMsgType, web
+from aiohttp.helpers import content_disposition_header
 
 from .ai_admin import AiAdmin
 from .camera import CameraConfig, CameraManager
@@ -127,6 +129,33 @@ async def api_camera_record_start(request):
 async def api_camera_record_stop(request):
     path = request.app[CAMERA].stop_recording()
     return web.json_response({"ok": True, "file": path})
+
+
+async def api_camera_recordings(request):
+    return web.json_response({"recordings": await asyncio.to_thread(request.app[CAMERA].recordings)})
+
+
+async def api_camera_recording_download(request):
+    try:
+        path = request.app[CAMERA].recording_file(request.match_info["name"])
+    except FileNotFoundError:
+        raise web.HTTPNotFound()
+    response = web.FileResponse(path, headers={"Content-Type": "video/x-msvideo"})
+    response.headers["Content-Disposition"] = content_disposition_header("attachment", filename=path.name)
+    return response
+
+
+async def api_camera_recording_preview(request):
+    try:
+        path = await asyncio.to_thread(request.app[CAMERA].preview_file, request.match_info["name"])
+    except FileNotFoundError:
+        raise web.HTTPNotFound()
+    except RuntimeError as exc:
+        raise web.HTTPConflict(text=str(exc))
+    except (OSError, subprocess.CalledProcessError) as exc:
+        log.error("video preview failed: %s", exc)
+        raise web.HTTPInternalServerError(text="video conversion failed")
+    return web.FileResponse(path, headers={"Content-Type": "video/mp4"})
 
 
 async def camera_stream(request):
@@ -268,6 +297,9 @@ def create_app(ctrl, ai_admin, control_url, camera, nats_monitor):
     app.router.add_post("/api/ai/stop", api_ai_stop)
     app.router.add_post("/api/camera/record/start", api_camera_record_start)
     app.router.add_post("/api/camera/record/stop", api_camera_record_stop)
+    app.router.add_get("/api/camera/recordings", api_camera_recordings)
+    app.router.add_get("/api/camera/recordings/{name}/download", api_camera_recording_download)
+    app.router.add_get("/api/camera/recordings/{name}/preview", api_camera_recording_preview)
     app.router.add_get("/api/camera/stream.mjpg", camera_stream)
     app.router.add_get("/ws", ws_handler)
     app.router.add_static("/static", BASE / "web" / "static")

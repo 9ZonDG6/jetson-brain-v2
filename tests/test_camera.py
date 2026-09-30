@@ -23,6 +23,12 @@ class CameraTests(unittest.TestCase):
                 camera.stop_recording()
                 self.assertGreater(Path(path).stat().st_size, 1000)
                 self.assertFalse(camera.status()["recording"])
+                self.assertEqual(camera.recordings()[0]["name"], Path(path).name)
+                preview = camera.preview_file(Path(path).name)
+                self.assertGreater(preview.stat().st_size, 1000)
+                self.assertEqual(camera.preview_file(Path(path).name), preview)
+                with self.assertRaises(FileNotFoundError):
+                    camera.recording_file("../outside.avi")
             finally:
                 camera.stop()
 
