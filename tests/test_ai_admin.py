@@ -22,6 +22,7 @@ class AiAdminTests(unittest.TestCase):
             body = {"swap": False, "inv1": False, "inv2": True}
             admin.save_wasd_config(body)
             self.assertEqual(admin.config().right_sign, -1)
+            self.assertEqual(admin.status()["config"]["drive_delta_us"], 80)
             with self.assertRaisesRegex(ValueError, "swap must be boolean"):
                 admin.save_wasd_config({"swap": 1, "inv1": False, "inv2": False})
 

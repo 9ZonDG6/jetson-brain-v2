@@ -139,8 +139,18 @@ class AiAdmin:
 
     def status(self):
         process = self._process
+        config = None
+        config_error = None
+        if self.config_path.exists():
+            try:
+                from dataclasses import asdict
+                config = asdict(self.config())
+            except (OSError, ValueError, TypeError) as exc:
+                config_error = str(exc)
         return {
             "configured": self.config_path.exists(),
+            "config": config,
+            "config_error": config_error,
             "running": process is not None and process.poll() is None,
             "exit_code": None if process is None else process.poll(),
             "log_path": AI_LOG_PATH,

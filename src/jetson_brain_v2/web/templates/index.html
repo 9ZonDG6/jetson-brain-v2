@@ -11,8 +11,8 @@
     <h1>Jetson Brain v2</h1>
     <div class="chips">
       <span class="chip" id="c-jetson"><i></i>Jetson <b>…</b></span>
-      <span class="chip" id="c-pwm"><i></i>PWM out <b>…</b></span>
-      <span class="chip" id="c-rc"><i></i>RC <b>…</b></span>
+      <span class="chip" id="c-pwm"><i></i>PWM-выход <b>…</b></span>
+      <span class="chip" id="c-rc"><i></i>Пульт <b>…</b></span>
       <span class="chip" id="c-nats"><i></i>NATS <b>…</b></span>
     </div>
   </header>
@@ -62,28 +62,28 @@
     <section class="card wide">
       <div class="controls">
         <div class="switch">
-          <button id="btn-arm-rc" class="seg"><small>ARM</small>RC CONTROL</button>
-          <button id="btn-arm-web" class="seg"><small>ARM</small>WEB CONTROL</button>
+          <button id="btn-arm-rc" class="seg"><small>ВКЛ.</small>ПУЛЬТ</button>
+          <button id="btn-arm-web" class="seg"><small>ВКЛ.</small>БРАУЗЕР</button>
         </div>
-        <button id="btn-stop" class="stop">STOP<small>пробел</small></button>
+        <button id="btn-stop" class="stop">СТОП<small>пробел</small></button>
       </div>
 
       <div id="web" class="web locked">
         <div class="web-head">
           <h2>Управление из браузера</h2>
           <span class="web-state" id="web-state">—</span>
-          <button id="btn-center" class="small">CENTER</button>
+          <button id="btn-center" class="small">В ЦЕНТР</button>
         </div>
 
         <div class="slider">
-          <div class="slider-head"><span>OUT1</span><b id="w1v">1500 us</b></div>
+          <div class="slider-head"><span>OUT1</span><b id="w1v">1500 мкс</b></div>
           <div class="range"><div class="meter"><div class="fill"></div><div class="zero"></div></div>
             <input type="range" id="w1" min="1000" max="2000" step="1" value="1500"></div>
           <div class="scale"><span>1000</span><span>1500</span><span>2000</span></div>
         </div>
 
         <div class="slider">
-          <div class="slider-head"><span>OUT2</span><b id="w2v">1500 us</b></div>
+          <div class="slider-head"><span>OUT2</span><b id="w2v">1500 мкс</b></div>
           <div class="range"><div class="meter"><div class="fill"></div><div class="zero"></div></div>
             <input type="range" id="w2" min="1000" max="2000" step="1" value="1500"></div>
           <div class="scale"><span>1000</span><span>1500</span><span>2000</span></div>
@@ -97,7 +97,7 @@
         </div>
 
         <div class="power">
-          <span>Сила WASD ±<b id="pwv">150</b> us</span>
+          <span>Сила WASD ±<b id="pwv">150</b> мкс</span>
           <input type="range" id="power" min="20" max="500" step="10" value="150">
         </div>
 
@@ -113,9 +113,10 @@
     <section class="card wide">
       <h2>ИИ-пилот <span>robot-vision → NATS → 4WD</span></h2>
       <p class="panel-note" id="ai-state">ИИ выключен</p>
+      <p class="panel-note" id="ai-values">Параметры ИИ ещё не сохранены</p>
       <p class="panel-note" id="vision-state">NATS: подключение…</p>
       <div class="settings-grid">
-        <label>NATS URL <input id="ai-nats-url" type="text" placeholder="nats://адрес:4222" autocomplete="off"></label>
+        <label>Адрес NATS <input id="ai-nats-url" type="text" placeholder="nats://адрес:4222" autocomplete="off"></label>
         <label>Маршрут
           <select id="ai-route">
             <option value="">— не менять —</option>
@@ -126,8 +127,8 @@
             <option value="office">офис</option>
           </select>
         </label>
-        <label>Ход, μs <input id="ai-drive" type="number" min="1" max="500" value="80"></label>
-        <label>Поворот, μs <input id="ai-turn" type="number" min="1" max="500" value="80"></label>
+        <label>Тяга ИИ, мкс от нейтрали <input id="ai-drive" type="number" min="1" max="500" value="80"></label>
+        <label>Сила поворота ИИ, мкс <input id="ai-turn" type="number" min="1" max="500" value="80"></label>
         <label>Подруливание RC
           <select id="ai-rc-mode">
             <option value="off">выключено</option>
@@ -144,10 +145,10 @@
       </div>
       <div class="panel-actions">
         <button id="btn-ai-save" class="small">Сохранить проводку из текущего WASD</button>
-        <button id="btn-ai-arm" class="seg"><small>ARM</small>ИИ</button>
+        <button id="btn-ai-arm" class="seg"><small>ВКЛ.</small>ИИ</button>
         <button id="btn-ai-stop" class="small">Остановить ИИ</button>
       </div>
-      <p class="panel-note">WASD должен ехать правильно до сохранения проводки. При потере команд ИИ выходы переходят в нейтраль.</p>
+      <p class="panel-note">1500 мкс — нейтраль. ИИ поедет только после сохранения проводки и свежей команды от robot-vision. При потере команд выходы возвращаются в нейтраль.</p>
       <pre class="ai-log" id="ai-log"></pre>
     </section>
 
@@ -164,7 +165,7 @@
     </section>
   </main>
 
-  <footer>Tegra PWM 8 бит: шаг 78 us при 50 Hz, реальная нейтраль 1484 us. WASD действуют пока зажаты: отпустил → 1500.</footer>
+  <footer>PWM Tegra, 8 бит: шаг около 78 мкс при 50 Гц; фактическая нейтраль 1484 мкс. WASD действуют пока зажаты: отпустил → 1500 мкс.</footer>
 
   <script src="/static/app.js"></script>
 </body>

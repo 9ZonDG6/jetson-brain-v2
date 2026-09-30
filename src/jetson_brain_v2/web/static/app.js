@@ -114,7 +114,7 @@ function setSlider(n, v) {
 
 function paintSlider(n) {
   const v = +$("w" + n).value;
-  $("w" + n + "v").textContent = v + " us";
+  $("w" + n + "v").textContent = v + " мкс";
   setMeter($("w" + n).parentElement.querySelector(".meter"), v);
 }
 
@@ -160,7 +160,7 @@ for (const k of ["swap", "inv1", "inv2"]) {
   });
 }
 
-$("ai-nats-url").value = localStorage.getItem("ai-nats-url") || "";
+$("ai-nats-url").value = localStorage.getItem("ai-nats-url") || "nats://127.0.0.1:4222";
 $("ai-route").value = localStorage.getItem("ai-route") || "";
 $("ai-route").addEventListener("change", () =>
   localStorage.setItem("ai-route", $("ai-route").value));
@@ -264,35 +264,39 @@ function toast(text) {
 }
 
 const MODE = {
-  DISARMED: ["DISARMED", "warn", "Выходы в нейтрали 1500 / 1500. Выберите RC CONTROL или WEB CONTROL."],
-  RC_ARMED: ["RC", "ok", "Выход повторяет штатный пульт."],
-  WEB_ARMED: ["WEB", "ok", "Выход управляется из браузера."],
-  FAULT: ["FAULT", "bad", "Выходы 1500 / 1500. Нужен ручной ARM."],
+  DISARMED: ["НЕЙТРАЛЬ", "warn", "Выходы 1500 / 1500 мкс. Включите пульт или управление из браузера."],
+  RC_ARMED: ["ПУЛЬТ", "ok", "Выход повторяет штатный пульт."],
+  WEB_ARMED: ["БРАУЗЕР", "ok", "Выход управляется из браузера."],
+  FAULT: ["ОШИБКА", "bad", "Выходы 1500 / 1500 мкс. После устранения причины включите управление вручную."],
 };
-const SOURCE = { DISARMED: "нейтраль 1500", RC_ARMED: "пульт RC", WEB_ARMED: "браузер", FAULT: "нейтраль 1500 (FAULT)" };
+const SOURCE = { DISARMED: "нейтраль 1500 мкс", RC_ARMED: "пульт", WEB_ARMED: "браузер", FAULT: "нейтраль 1500 мкс (ошибка)" };
+const PWM_STATUS = { READY: "ГОТОВ", "DRY-RUN": "ПРОВЕРКА" };
+const RC_STATUS = { CONNECTED: "СВЯЗЬ ЕСТЬ", LOST: "НЕТ СИГНАЛА", INVALID: "НЕВЕРНЫЙ СИГНАЛ" };
+const VISION_MOVE = { straight: "прямо", left: "налево", right: "направо", stop: "стоп", lost: "локализация потеряна" };
+let aiFieldsLoaded = false;
 
 function renderOffline() {
-  setChip("c-jetson", "OFFLINE", "bad");
+  setChip("c-jetson", "НЕТ СВЯЗИ", "bad");
   setChip("c-nats", "—", "bad");
   $("vision-state").textContent = "Нет связи с Jetson";
   const b = $("banner");
   b.className = "banner bad";
-  $("mode").textContent = "OFFLINE";
+  $("mode").textContent = "НЕТ СВЯЗИ";
   $("mode-text").textContent = "Нет связи с Jetson. Переподключение…";
 }
 
 function render(s) {
-  setChip("c-jetson", "ONLINE", "ok");
-  setChip("c-pwm", s.pwm_status, s.pwm_status === "READY" ? "ok" : s.pwm_status === "DRY-RUN" ? "warn" : "bad");
-  setChip("c-rc", s.rc_status, s.rc_status === "CONNECTED" ? "ok" : "bad");
+  setChip("c-jetson", "В СЕТИ", "ok");
+  setChip("c-pwm", PWM_STATUS[s.pwm_status] || "ОШИБКА", s.pwm_status === "READY" ? "ok" : s.pwm_status === "DRY-RUN" ? "warn" : "bad");
+  setChip("c-rc", RC_STATUS[s.rc_status] || s.rc_status, s.rc_status === "CONNECTED" ? "ok" : "bad");
   const nats = s.nats || {};
-  setChip("c-nats", nats.connected ? "ONLINE" : "OFFLINE", nats.connected ? "ok" : "bad");
+  setChip("c-nats", nats.connected ? "СВЯЗЬ ЕСТЬ" : "НЕТ СВЯЗИ", nats.connected ? "ok" : "bad");
   $("vision-state").textContent = !nats.connected
     ? `NATS не подключён: ${nats.error || nats.url || "проверьте брокер"}`
     : !nats.message_count
       ? `NATS подключён (${nats.subject}); команд от robot-vision ещё не было`
       : nats.recent
-        ? `robot-vision: ${nats.last_move_type || "сообщение"} · ${nats.last_message_age_ms} мс назад · всего ${nats.message_count}`
+        ? `robot-vision: ${VISION_MOVE[nats.last_move_type] || "сообщение"} · ${nats.last_message_age_ms} мс назад · всего ${nats.message_count}`
         : `NATS подключён; нет свежих команд robot-vision (последняя ${Math.round(nats.last_message_age_ms / 1000)} с назад)`;
 
   const aiActive = !!(s.ai && s.ai.running);
@@ -310,26 +314,47 @@ function render(s) {
     const st = s[`ch${n}_status`];
     const ok = st === "CONNECTED";
     const val = row.querySelector(".ch-val");
-    val.textContent = us == null ? "—" : us + " us";
+    val.textContent = us == null ? "—" : us + " мкс";
     val.classList.toggle("stale", !ok);
     const pill = row.querySelector(".pill");
-    pill.textContent = st;
+    pill.textContent = RC_STATUS[st] || st;
     pill.className = "pill " + (ok ? "ok" : "bad");
     setMeter(row.querySelector(".meter"), us, ok ? "" : "idle");
     const age = s[`ch${n}_age_ms`];
     const hz = s[`ch${n}_hz`];
     row.querySelector(".meta").textContent =
-      (age == null ? "нет кадров" : "кадр " + age + " ms назад") + (hz == null ? "" : " · " + hz + " Hz");
+      (age == null ? "нет импульсов" : "импульс " + age + " мс назад") + (hz == null ? "" : " · " + hz + " Гц");
 
     const out = document.querySelector(`[data-ch="out${n}"]`);
-    out.querySelector(".ch-val").textContent = s[`out${n}_us`] + " us";
-    out.querySelector(".sub").textContent = "реально " + s[`out${n}_actual_us`] + " us";
+    out.querySelector(".ch-val").textContent = s[`out${n}_us`] + " мкс";
+    out.querySelector(".sub").textContent = "фактически " + s[`out${n}_actual_us`] + " мкс";
     setMeter(out.querySelector(".meter"), s[`out${n}_us`], s.mode === "RC_ARMED" || s.mode === "WEB_ARMED" ? "" : "idle");
   }
   $("source").textContent = aiActive && s.mode === "WEB_ARMED" ? "ИИ" : SOURCE[s.mode];
 
+  const savedAi = s.ai && s.ai.config;
+  if (savedAi && !aiFieldsLoaded) {
+    $("ai-drive").value = savedAi.drive_delta_us;
+    $("ai-turn").value = savedAi.turn_delta_us;
+    $("ai-rc-mode").value = savedAi.rc_nudge_mode;
+    $("ai-rc-side").value = savedAi.rc_steering_channel === savedAi.left_output ? "left" : "right";
+    $("ai-rc-sign").value = savedAi.rc_steering_sign;
+    aiFieldsLoaded = true;
+  }
+  if (savedAi) {
+    const out1Sign = savedAi.left_output === 1 ? savedAi.left_sign : savedAi.right_sign;
+    const out2Sign = savedAi.left_output === 2 ? savedAi.left_sign : savedAi.right_sign;
+    const out1 = NEUTRAL + out1Sign * savedAi.drive_delta_us;
+    const out2 = NEUTRAL + out2Sign * savedAi.drive_delta_us;
+    $("ai-values").textContent = `Сохранено: тяга ${savedAi.drive_delta_us} мкс, поворот до ${savedAi.turn_delta_us} мкс. При команде «прямо»: OUT1 ${out1} мкс, OUT2 ${out2} мкс (заданные значения).`;
+  } else {
+    $("ai-values").textContent = s.ai && s.ai.config_error
+      ? `Ошибка настроек ИИ: ${s.ai.config_error}`
+      : "Параметры ИИ ещё не сохранены. В форме предложены тяга и поворот по 80 мкс от нейтрали 1500 мкс.";
+  }
+
   $("ai-state").textContent = !s.ai || !s.ai.configured ? "ИИ: сначала сохраните проводку из WASD"
-    : aiActive && s.mode === "WEB_ARMED" ? "ИИ управляет приводом; STOP и ARM RC доступны"
+    : aiActive && s.mode === "WEB_ARMED" ? "ИИ управляет приводом; СТОП и пульт доступны"
     : aiActive ? "ИИ ждёт свежую локализацию"
     : s.ai.exit_code == null ? "ИИ готов к запуску" : `ИИ остановлен (код ${s.ai.exit_code})`;
   $("btn-ai-arm").classList.toggle("active", aiActive && s.mode === "WEB_ARMED");
@@ -355,7 +380,7 @@ function render(s) {
   $("web").classList.toggle("locked", !armedLocal);
   const wst = $("web-state");
   if (armedLocal) {
-    wst.textContent = "ARMED — управляет выходом";
+    wst.textContent = "включено — управляет выходом";
     wst.className = "web-state ok";
   } else if (s.mode === "WEB_ARMED") {
     wst.textContent = aiActive ? "управляет ИИ" : "управляет другой браузер";
