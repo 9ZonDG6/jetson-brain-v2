@@ -115,7 +115,10 @@ class CameraManager:
         for path in self.recordings_dir.iterdir():
             if path.suffix.lower() != ".avi" or not path.is_file() or path.is_symlink():
                 continue
-            stat = path.stat()
+            try:
+                stat = path.stat()
+            except FileNotFoundError:
+                continue
             files.append({"name": path.name, "size": stat.st_size,
                           "modified": stat.st_mtime, "recording": path.name == active})
         return sorted(files, key=lambda item: item["modified"], reverse=True)

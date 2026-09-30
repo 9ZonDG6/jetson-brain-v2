@@ -133,7 +133,12 @@ async def api_camera_record_stop(request):
 
 
 async def api_camera_recordings(request):
-    return web.json_response({"recordings": await asyncio.to_thread(request.app[CAMERA].recordings)})
+    try:
+        recordings = request.app[CAMERA].recordings()
+    except OSError as exc:
+        log.error("cannot list camera recordings: %s", exc)
+        return web.json_response({"error": "Не удалось прочитать папку записей"}, status=503)
+    return web.json_response({"recordings": recordings})
 
 
 async def api_camera_recording_download(request):
