@@ -217,6 +217,39 @@ $("btn-camera-stop").onclick = async () => {
   }
 };
 
+async function refreshPhotos() {
+  try {
+    const response = await fetch("/api/camera/photos");
+    const data = await response.json();
+    if (!data.ok) throw new Error(data.error || `HTTP ${response.status}`);
+    const album = data.album;
+    $("photos-state").textContent = album.count
+      ? `${album.count} фото в одном ZIP · ${(album.size / 1048576).toFixed(1)} МБ`
+      : "Фото пока нет";
+    $("btn-photos-download").classList.toggle("hidden", !album.count);
+    $("btn-photos-delete").disabled = !album.count;
+  } catch (error) {
+    $("photos-state").textContent = `Не удалось открыть архив фото: ${error}`;
+  }
+}
+
+$("btn-camera-photo").onclick = async () => {
+  const result = await post("/api/camera/photo");
+  if (result.ok) {
+    toast(`Фото сохранено: ${result.photo.name}`);
+    refreshPhotos();
+  }
+};
+$("btn-photos-delete").onclick = async () => {
+  if (!confirm("Удалить весь архив фото? Восстановить снимки будет нельзя.")) return;
+  const result = await post("/api/camera/photos/delete");
+  if (result.ok) {
+    toast("Архив фото удалён");
+    refreshPhotos();
+  }
+};
+refreshPhotos();
+
 function renderFocus(state) {
   const range = $("focus-range");
   range.min = state.min;
@@ -516,6 +549,7 @@ function render(s) {
   $("btn-camera-view").disabled = !camera.configured;
   $("btn-camera-record").disabled = !camera.online || camera.recording;
   $("btn-camera-stop").disabled = !camera.recording;
+  $("btn-camera-photo").disabled = !camera.online;
 
   if (armedLocal && !(s.mode === "WEB_ARMED" && s.web_owner)) disarmLocal();
 

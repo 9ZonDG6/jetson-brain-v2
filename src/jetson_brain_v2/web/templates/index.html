@@ -162,6 +162,15 @@
       </div>
       <img id="camera-preview" class="camera-preview hidden" alt="Прямой поток с камеры">
       <p class="panel-note" id="camera-file"></p>
+      <div class="photos-control">
+        <h3>Фото</h3>
+        <div class="panel-actions">
+          <button id="btn-camera-photo" class="small">Сделать фото</button>
+          <a id="btn-photos-download" class="small recording-download" href="/api/camera/photos.zip" download="photos.zip">Скачать все фото</a>
+          <button id="btn-photos-delete" class="small recording-delete">Удалить все фото</button>
+        </div>
+        <p id="photos-state" class="panel-note">Проверка архива…</p>
+      </div>
       <div class="focus-control">
         <h3>Фокус камеры</h3>
         <span id="focus-state" class="panel-note">Проверка камеры…</span>

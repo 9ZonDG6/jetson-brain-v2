@@ -12,6 +12,7 @@ import logging
 import os
 import signal
 import subprocess
+import zipfile
 import uuid
 import weakref
 from pathlib import Path
@@ -130,6 +131,40 @@ async def api_camera_record_start(request):
 async def api_camera_record_stop(request):
     path = request.app[CAMERA].stop_recording()
     return web.json_response({"ok": True, "file": path})
+
+
+async def api_camera_photo(request):
+    try:
+        photo = await asyncio.to_thread(request.app[CAMERA].take_photo)
+    except RuntimeError as exc:
+        return web.json_response({"ok": False, "error": str(exc)}, status=409)
+    except (OSError, zipfile.BadZipFile) as exc:
+        log.error("camera photo failed: %s", exc)
+        return web.json_response({"ok": False, "error": "Не удалось сохранить фото"}, status=500)
+    return web.json_response({"ok": True, "photo": photo})
+
+
+async def api_camera_photos(request):
+    try:
+        album = await asyncio.to_thread(request.app[CAMERA].photo_archive)
+    except (OSError, zipfile.BadZipFile) as exc:
+        log.error("cannot read photo archive: %s", exc)
+        return web.json_response({"ok": False, "error": "Не удалось прочитать архив фото"}, status=500)
+    return web.json_response({"ok": True, "album": album})
+
+
+async def api_camera_photos_download(request):
+    path = request.app[CAMERA].photo_archive_path
+    if not path.is_file() or path.is_symlink():
+        raise web.HTTPNotFound()
+    response = web.FileResponse(path, headers={"Content-Type": "application/zip"})
+    response.headers["Content-Disposition"] = content_disposition_header("attachment", filename="photos.zip")
+    return response
+
+
+async def api_camera_photos_delete(request):
+    await asyncio.to_thread(request.app[CAMERA].delete_photos)
+    return web.json_response({"ok": True})
 
 
 async def api_camera_focus(request):
@@ -368,6 +403,10 @@ def create_app(ctrl, ai_admin, control_url, camera, nats_monitor):
     app.router.add_post("/api/ai/stop", api_ai_stop)
     app.router.add_post("/api/camera/record/start", api_camera_record_start)
     app.router.add_post("/api/camera/record/stop", api_camera_record_stop)
+    app.router.add_post("/api/camera/photo", api_camera_photo)
+    app.router.add_get("/api/camera/photos", api_camera_photos)
+    app.router.add_get("/api/camera/photos.zip", api_camera_photos_download)
+    app.router.add_post("/api/camera/photos/delete", api_camera_photos_delete)
     app.router.add_get("/api/camera/focus", api_camera_focus)
     app.router.add_post("/api/camera/focus", api_camera_focus_set)
     app.router.add_get("/api/camera/recordings", api_camera_recordings)

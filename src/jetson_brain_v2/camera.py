@@ -7,7 +7,9 @@ import queue
 import subprocess
 import threading
 import time
+import zipfile
 from dataclasses import dataclass
+from datetime import datetime
 from pathlib import Path
 
 from .camera_focus import focus_status, set_focus
@@ -109,7 +111,39 @@ class CameraManager:
         self._record_process = None
         self._record_path = None
         self._preview_lock = threading.Lock()
+        self._photo_lock = threading.Lock()
         self.error = None
+
+    @property
+    def photo_archive_path(self):
+        return self.recordings_dir / "photos.zip"
+
+    def photo_archive(self):
+        with self._photo_lock:
+            path = self.photo_archive_path
+            if not path.is_file():
+                return {"count": 0, "size": 0}
+            with zipfile.ZipFile(path) as archive:
+                count = len(archive.infolist())
+            return {"count": count, "size": path.stat().st_size}
+
+    def take_photo(self):
+        with self._lock:
+            if self._latest is None or self._last_frame_at is None or time.monotonic() - self._last_frame_at > 2:
+                raise RuntimeError("camera has no live frame")
+            frame = self._latest
+        with self._photo_lock:
+            self.recordings_dir.mkdir(parents=True, exist_ok=True)
+            name = "photo-%s.jpg" % datetime.now().strftime("%Y%m%d-%H%M%S-%f")
+            with zipfile.ZipFile(self.photo_archive_path, "a", compression=zipfile.ZIP_STORED,
+                                 allowZip64=True) as archive:
+                archive.writestr(name, frame)
+                count = len(archive.infolist())
+            return {"name": name, "count": count}
+
+    def delete_photos(self):
+        with self._photo_lock:
+            self.photo_archive_path.unlink(missing_ok=True)
 
     def recordings(self):
         if not self.recordings_dir.is_dir():

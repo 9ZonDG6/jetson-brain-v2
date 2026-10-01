@@ -2,6 +2,7 @@ import shutil
 import tempfile
 import time
 import unittest
+import zipfile
 from pathlib import Path
 
 from jetson_brain_v2.camera import CameraConfig, CameraManager
@@ -18,6 +19,14 @@ class CameraTests(unittest.TestCase):
                 self.assertGreater(frame_id, 0)
                 self.assertTrue(frame.startswith(b"\xff\xd8"))
                 path = camera.start_recording()
+                first = camera.take_photo()
+                second = camera.take_photo()
+                self.assertNotEqual(first["name"], second["name"])
+                self.assertEqual(second["count"], 2)
+                with zipfile.ZipFile(camera.photo_archive_path) as album:
+                    self.assertEqual(len(album.namelist()), 2)
+                    self.assertTrue(all(album.read(name).startswith(b"\xff\xd8") for name in album.namelist()))
+                self.assertGreater(camera.photo_archive()["size"], 1000)
                 time.sleep(0.8)
                 self.assertTrue(camera.status()["recording"])
                 camera.stop_recording()
@@ -33,6 +42,8 @@ class CameraTests(unittest.TestCase):
                 camera.delete_recording(Path(path).name)
                 self.assertFalse(Path(path).exists())
                 self.assertFalse(preview.exists())
+                camera.delete_photos()
+                self.assertEqual(camera.photo_archive(), {"count": 0, "size": 0})
             finally:
                 camera.stop()
 
